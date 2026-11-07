@@ -1,5 +1,7 @@
 # T.O.R.R.E.N.T.
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24040746.svg)](https://doi.org/10.5281/zenodo.24040746)
+
 **Toroidal Operational Recursive Reasoning Epistemic Network & Trajectory**
 
 An experimental "language-enabled toroidal crystalline manifold" (LTCM): a small, standard-library Python engine that keeps a persistent semantic state on a 7×7×7 wraparound lattice, learns word associations, consolidates them offline ("sleep" and "dreams"), and can feed its state to a local LLM.
@@ -59,7 +61,7 @@ Handy in-chat commands: `/crystals`, `/ponder`, `/sleep`, `/dream`, `/audit`, `/
 
 ## Why this is public
 
-This project is published as a **defensive disclosure** so the ideas in it stay free for anyone to use and cannot later be patented by someone else. The description in `TORRENT_DISCLOSURE.md` is written to be detailed enough to re-implement.
+This project is published as a **defensive disclosure** so the ideas in it stay free for anyone to use and cannot later be patented by someone else. The description in `TORRENT_DISCLOSURE.md` is written to be detailed enough to re-implement. Permanent archived copies are on Zenodo: [doi.org/10.5281/zenodo.24040746](https://doi.org/10.5281/zenodo.24040746) always points to the latest version, and the original first release (v21.0, the dated disclosure) is [doi.org/10.5281/zenodo.24040747](https://doi.org/10.5281/zenodo.24040747).
 
 ## Notes
 
