@@ -4,7 +4,7 @@
 
 - **Disclosure date:** the date of the first public commit of this file in the repository named below
 - **Author:** manifold-medic
-- **Files described:** `torrentengine.py` (engine, version 21.0), `TLLMV9VOICE.py` (local-LLM bridge with optional voice input/output)
+- **Files described:** `torrentengine.py` (engine, version 21.0), `ltcmbridge.py` (local-LLM bridge with optional voice input/output)
 - **Terminology:** the author refers to systems of this kind as *LTCMs* (language-enabled toroidal crystalline manifolds)
 - **Repository:** https://github.com/manifold-medic/torrent-engine (the date of the first commit containing this file is the disclosure date)
 - **License:** Apache-2.0
@@ -193,7 +193,7 @@ Only the naming, farewell and feelings checks apply when training wheels are off
 
 Without an LLM the engine produces replies from templates and word choices driven by the terminal cell, the pondered bridge word, and stratified verb lists (concrete / causal / counterfactual / synthetic, chosen by Z). A three-step "pondering" pass (Alpha entry → Gamma critique/prune → Omega apex) selects a bridge word and a confidence value `0.65 + 0.25·cos − 0.15·gammaTension`, clamped to 0.45–0.99. Drafts are pruned if the bridge is a generic hub, was used recently, has coherence < 0.22, or conflicts strongly with the Gamma facet.
 
-## 11. LLM bridge (`TLLMV9VOICE.py`)
+## 11. LLM bridge (`ltcmbridge.py`)
 
 - Talks to a **local** model over HTTP (Ollama `/api/chat` on desktop, an OpenAI-compatible endpoint on mobile; default models are Gemma-2 variants).
 - **State injection.** The bridge turns the engine's training wheels off at start-up, which selects the default prompt:
@@ -233,4 +233,4 @@ The ideas here build on, or overlap with, earlier work. Notably:
 
 ## 14. Reproducing
 
-Python 3. The engine uses the standard library only. Optionally place a word file next to the script: Stanford's `glove.6B.50d.txt` (from `glove.6B.zip`; the vectors are released under the Public Domain Dedication and License) for the `glove50d` mode, or a two-number word map for the `map2d` mode. Run `TLLMV9VOICE.py` (which imports `torrentengine` and starts the engine itself); with a local Ollama or OpenAI-compatible server it uses the LLM as a voice, and without one it falls back to the engine's native replies. `torrentengine.py` can also be run directly on its own. Voice features need a local Whisper and Piper installation and are optional. A fresh `brain_memory.json` is created on first save. Saves are written to a temporary file and then swapped in; if the file cannot be read at start-up, it is renamed to `brain_memory.json.unreadable-<timestamp>` rather than overwritten. The saved file contains the conversation history and should not be shared.
+Python 3. The engine uses the standard library only. Optionally place a word file next to the script: Stanford's `glove.6B.50d.txt` (from `glove.6B.zip`; the vectors are released under the Public Domain Dedication and License) for the `glove50d` mode, or a two-number word map for the `map2d` mode. Run `ltcmbridge.py` (which imports `torrentengine` and starts the engine itself); with a local Ollama or OpenAI-compatible server it uses the LLM as a voice, and without one it falls back to the engine's native replies. `torrentengine.py` can also be run directly on its own. Voice features need a local Whisper and Piper installation and are optional. A fresh `brain_memory.json` is created on first save. Saves are written to a temporary file and then swapped in; if the file cannot be read at start-up, it is renamed to `brain_memory.json.unreadable-<timestamp>` rather than overwritten. The saved file contains the conversation history and should not be shared.

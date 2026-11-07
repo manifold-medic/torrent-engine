@@ -13,7 +13,7 @@ An experimental "language-enabled toroidal crystalline manifold" (LTCM): a small
 | File | Purpose |
 |---|---|
 | `torrentengine.py` | The engine (v21.0). Standard library only. |
-| `TLLMV9VOICE.py` | The easiest way to start: loads the engine and, if a local LLM (Ollama or an OpenAI-compatible server) is reachable, uses it as a voice. Falls back to the engine's own replies otherwise. Optional local voice in/out. |
+| `ltcmbridge.py` | The easiest way to start: loads the engine and, if a local LLM (Ollama or an OpenAI-compatible server) is reachable, uses it as a voice. Falls back to the engine's own replies otherwise. Optional local voice in/out. |
 | `TORRENT_DISCLOSURE.md` | Full technical description of how everything works, published as a defensive disclosure. |
 | `LICENSE` | Apache-2.0. |
 
@@ -22,7 +22,7 @@ An experimental "language-enabled toroidal crystalline manifold" (LTCM): a small
 Keep both `.py` files in the same folder and run the bridge. It loads the engine automatically, so this one command is all you need:
 
 ```bash
-python TLLMV9VOICE.py
+python ltcmbridge.py
 ```
 
 - **With a local LLM running** (Ollama or an OpenAI-compatible server), the engine's state is injected into the model's prompt and the model's reply is used.
