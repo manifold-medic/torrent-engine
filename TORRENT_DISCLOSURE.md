@@ -28,6 +28,7 @@ T.O.R.R.E.N.T. is a small, dependency-light Python program (standard library onl
 7. A **bridge** that injects the engine's state into the prompt of a local LLM and, optionally, learns from the LLM's reply.
 8. An **identity layer** that keeps names (user, bot, dialogue partner) out of the semantic lattice except at the origin cell, and a **boot-time naming handshake** in which the bot proposes a name that emerged from its own dream traces.
 9. Optional **local speech input and output** in the bridge.
+10. A **brain-to-brain dialogue** method in which two LLM-voiced LTCMs converse and each learns from the other's replies (§11b; described only, code not included).
 
 State is persisted to `brain_memory.json`; the latest audit is written to `latest_trace.json`.
 
@@ -208,6 +209,25 @@ Without an LLM the engine produces replies from templates and word choices drive
 - **Single entry point and fallback.** Running the bridge script imports and starts the engine itself. If no LLM endpoint is reachable, the bridge shows a one-time notice and returns the engine's own native reply for each turn, labelled as native, so the engine can be used on its own through the same program. A native fallback reply is not fed back into the post-processing step, so the engine does not learn from its own output.
 - **Optional voice (v9).** `LocalVoiceEngine` records a few seconds of microphone audio and transcribes it offline with `faster-whisper` (default model `base.en`, via `sounddevice`), or uses `termux-speech-to-text` on Android. Replies are spoken with the Piper CLI if a voice model is configured, else `pyttsx3`, else the operating system's offline speech (Windows SAPI, macOS `say`, Termux, `espeak`). Markdown symbols are removed before speaking. Commands: `/tts`, `/listen [sec]`, `/voicechat`. Voice is an input/output layer only and does not change the engine state logic.
 - The engine **does not constrain token generation**. Its influence on the LLM is through prompt text; its influence from the LLM is through post-hoc learning.
+
+## 11b. Brain-to-brain dialogue (described here; code not included)
+
+*This section was added in a later commit than the rest of this document; its disclosure date is the date of the commit that added it. The code is a separate, persona-specific bridge that the author keeps outside this repository for now; this section describes its method in enough detail to re-implement it.*
+
+Two LTCMs (two brain files, each with its own engine instance) hold a conversation with each other through one local LLM. Each brain's reply is spoken by the LLM from that brain's own state, and each brain takes in the other's reply through its normal engine turn.
+
+- **Setup.** The second engine instance is created without loading the word file again: it takes over the first instance's already-loaded word space (GloVe vocabulary, frequency ranks, calibrated axes, and a copy of the factory vectors), rebuilds its pole and coordinate vectors, and then loads its own brain file exactly once. Each brain keeps its own voice mode (§11), read from its brain file (default `ATTENUATED`; a brain kept read-only can be `SOVEREIGN`). If the partner's brain file is marked as open in another window, the user is warned first.
+- **Bounds.** At most 3 rounds, with a fixed pause (2.5 s) between steps to spare a small computer. Interrupting saves both brains.
+- **One round** (A starts from a seed question, given by the user or built from each brain's last topic):
+  1. *A's engine takes the incoming text as a normal turn* (§3–§6): it moves on the lattice, learns from the text, and runs pondering.
+  2. *A's LLM prompt* is built from A's state: identity, the partner's name as the person being spoken to, the terminal coordinate with its axis descriptions, cell and trace mood names, the crystal facet words, the A\* path, the pondered proposition and its confidence, DFS deductions, the pondering scratchpad, A's running summary and retrieved episodes, recent dreams, and the engine's draft reply. The last few messages of the dialogue (the bridge's usual window of 4) are sent as chat history.
+  3. *A's reply is post-processed into A* according to A's voice mode (§11), and recorded in A's episodic archive and running summary.
+  4. *B's engine takes A's reply as its incoming turn*: B moves and learns from A's words exactly as if a user had typed them.
+  5. *B's LLM prompt* is a shorter one built from B's state (identity as a manifold speaking to its peer, coordinate, axis descriptions, mood names, A\* path, pondered proposition, engine draft), with only A's reply as history. B's reply is post-processed into B according to B's voice mode, and B is saved.
+  6. B's reply becomes A's incoming text for the next round.
+- **Fallback.** If the LLM fails for either side, that side's engine draft is used as its reply, and nothing is learned from it.
+- **Learning paths.** The voice mode only controls learning from a brain's *own* LLM-voiced reply. Learning from the *partner's* words happens through the normal engine turn (step 1 or 4) in every mode, so even a `SOVEREIGN` brain is changed by what the other brain says. Known brain names (a fixed list) are filtered out of the reply-learning step.
+- **What has been seen so far (not evaluated).** In the author's few 3-round runs, the replies mostly picked up and praised each other's wording rather than disagreeing or adding anything concrete, which looks like the LLM being agreeable; both brains then stored that echo as new association links. A word-splitting glitch (an em-dash dropped, gluing two words into a non-word) produced a new "concept" in one brain that the other side's LLM went on to use (fixed in engine v21.3, which splits words on dashes). Neither brain learned the partner's name as a concept. These are observations from a handful of runs, not results.
 
 ## 12. Known limitations and honest notes
 

@@ -1,4 +1,34 @@
+# =============================================================================
+# T.O.R.R.E.N.T. engine (torrentengine.py) — CHANGELOG
+# v21.3 (2026-11-07)
+#   * Names vs words: a name that is also a normal word (Hope, Drift, Matt) only counts as a name when it is
+#     used as one (capitalized mid-sentence, "Hope, ...", "..., hope", "good night hope", "your name is hope").
+#     "I hope so" keeps the word "hope": it moves the brain, lands in cells, can crystallize and dream.
+#     Names that are never normal words (Gyre, invented names) behave exactly as before. A person's name (the
+#     user's) only counts as a word if it is in the engine's own vocabulary, so "matt" stays a name.
+#     Grammar/common words ("no", "not", "hello") are refused as names ("my name is not important" is safe).
+#   * Filler words: together, talk(ing), speak(ing), people, everyone, nobody, hello, goodbye, morning, night,
+#     explore, important now count as words (common-word tier: they move the brain and land in cells, but stay
+#     out of crystals, dreams and bridges). "together" finally uses its built-in social weight (+3.0).
+#   * Word splitting (#8): dashes, slashes, ellipses, "word.Word" and hyphens now separate words instead of gluing
+#     them ("reflection—a" no longer becomes "reflectiona"); possessives drop their 's ("Hope's" -> "hope").
+#     "good night" -> "goodnight" (GloVe's warm farewell word); "good morning/evening/afternoon" drop the time word.
+#   * Wraparound damping: each of the 10 trajectory steps moves 3/16 of a cell (TRAJECTORY_DAMPING), so a turn
+#     travels ~1-3 cells in the direction of its push instead of lapping the 7-cell ring. Torus and rules unchanged.
+# v21.2 (2026-11-07)
+#   * Brain picker: brains live in a "brains" folder; menu at startup, --brain NAME, --new
+#     (needs brainpicker.py next to this file). /clear asks you to type ERASE.
+#   * Divergence ratio divides by 8 (steps 0 and 1 are always shared), so it can reach 100%
+#     (it was capped at 88.9%). Verdict thresholds unchanged, so scores read a bit higher.
+#   * GloVe startup cache: the first start saves processed vectors next to the GloVe file
+#     (*.torrentcache.json/.bin); later starts load them in seconds. Identical numbers.
+#   * Teaching trigger ("X is Y") ignores vague subjects ("something is wrong"), names
+#     ("Matt is happy..."), and sentences about I/you/we. Real definitions still work.
+#   * Self-naming: answering "no" / "not yet" leaves the brain unnamed instead of naming it "No".
+# v21.1: learned negative weights kept on load; negative words can be dream threads.
+# =============================================================================
 import hashlib, heapq, json, math, operator, os, random, re, time
+from array import array
 
 BRAIN_LIBRARY = {
     "sAxisLabel": "Social Ring S (mod 7): Inward Reflection (0) <-> Universal Resonance (6)",
@@ -128,6 +158,9 @@ def first_token_is_word(first_tok):
         return True
 
 class ToroidalBrainEngine:
+    # v21.3: how far each of the 10 trajectory steps really moves (1.0 = the old full-cell steps, which lapped the ring)
+    TRAJECTORY_DAMPING = 0.1875
+
     def __init__(self, glove_file="glove.6B.50d.txt", memory_file="brain_memory.json", max_glove_words=50000):
         self.memory_file = memory_file
         self.dim = 50
@@ -151,6 +184,7 @@ class ToroidalBrainEngine:
         # UPGRADE 1: Known manifold & user identity tokens + active dialogue partner tracking
         self.base_identity_tokens = set()  # names come from user_profile / dialogue partner at runtime
         self.dialogue_partner_name = ""
+        self.turn_word_names = set()  # v21.3: names used as ordinary words in the current turn (see find_names_used_as_words)
         self.identity_query_triggers = {"name", "named", "call", "called", "who", "identity", "yourself", "myself"}
 
         self.cell_centroids, self.cell_lexicon, self.trace_lexicon = {}, {}, {}
@@ -222,6 +256,17 @@ class ToroidalBrainEngine:
             "september", "october", "november", "december", "makes", "job", "exit", "links", "sounds", "youve"
         }
         self.generic_hubs = {"hello", "hi", "hey", "good", "nice", "feel", "yes", "thank", "thanks", "goodbye", "working"}
+        # v21.3 filler words: these carry real social, time-of-day or curiosity meaning but sat in the filler
+        # (stop) list, so they were thrown away before they could move the brain ("together" even has a
+        # built-in social weight of +3.0 that was never used). They move to the "common word" tier instead:
+        # they count as words for movement, cells and learning, but stay out of crystals and dream threads
+        # and are held back as bridges, the same way "hello", "good" and "thank" already were.
+        self.filler_to_hub = {
+            "together", "talk", "talking", "speak", "speaking", "people", "everyone", "nobody",
+            "hello", "goodbye", "morning", "night", "explore", "important", "goodnight"
+        }
+        self.stop_words -= self.filler_to_hub
+        self.generic_hubs |= self.filler_to_hub
 
         self.core_concept_pool = set()
         for words in BRAIN_LIBRARY["semantic_clusters"].values():
@@ -234,6 +279,9 @@ class ToroidalBrainEngine:
         for w in self.tone_pool + self.core_emotion_pool:
             if w not in self.stop_words:
                 self.core_concept_pool.add(w)
+        # v21.3: the engine's own built-in vocabulary (before any learning), used to tell whether a name is also an ordinary word
+        self.builtin_vocab = (set(self.core_concept_pool) | self.stop_words | self.negation_tokens | self.negative_lexicon
+                              | self.generic_hubs | {w for pos, neg in AXIS_SEEDS.values() for w in pos + neg})
 
         self.init_builtin_50d_space()
         self.load_glove(glove_file, max_glove_words)
@@ -244,11 +292,8 @@ class ToroidalBrainEngine:
     # =================================================================
     # UPGRADE 1: DYNAMIC IDENTITY TOKEN REGISTRY & SELF-QUERY DETECTOR
     # =================================================================
-    def get_identity_tokens(self, extra_names=None):
-        """
-        Returns the dynamic set of identity tokens from user_profile, active
-        dialogue partner, and known manifold names.
-        """
+    def all_identity_names(self):
+        """Every name the brain knows: the user's, its own (or pending) name, and an active dialogue partner's."""
         id_set = set(self.base_identity_tokens)
         for key in ("user_name", "bot_name", "pending_bot_name"):
             val = str(self.user_profile.get(key, "")).strip().lower()
@@ -256,6 +301,64 @@ class ToroidalBrainEngine:
                 id_set.add(val)
         if self.dialogue_partner_name:
             id_set.add(self.dialogue_partner_name.strip().lower())
+        return id_set
+
+    def is_ordinary_word(self, w):
+        """v21.3: True if w is also a normal word (in GloVe or the engine's own vocabulary), like 'hope' or 'drift'."""
+        return w in self.raw_glove or w in self.builtin_vocab or w in self.factory_word_weights
+
+    def name_is_also_word(self, n):
+        """v21.3: is this NAME also an ordinary word? The brain's own name: GloVe or the engine's vocabulary ('hope',
+        'drift'). A person's name (the user, a dialogue partner): only the engine's own vocabulary, because GloVe is full
+        of people's names ('matt' is word #4042) and a person's name is rarely meant as a word."""
+        bot = str(self.user_profile.get("bot_name", "")).strip().lower()
+        pending = str(self.user_profile.get("pending_bot_name", "")).strip().lower()
+        if n in (bot, pending):
+            return self.is_ordinary_word(n)
+        return n in self.builtin_vocab or n in self.factory_word_weights
+
+    def get_hard_identity_tokens(self):
+        """v21.3: names that are never ordinary words (e.g. 'gyre', 'matt' or an invented name). Only these are scrubbed
+        from stored cells and crystals; a name like 'hope' can live there as the word it also is."""
+        return {n for n in self.all_identity_names() if not self.name_is_also_word(n)}
+
+    def find_names_used_as_words(self, user_text, tokens):
+        """v21.3 names vs words. A name that is also an ordinary word counts as a NAME only when it is used as one:
+        capitalized mid-sentence ("thanks, Hope"), set off by a comma ("Hope, are you there" / "are you there, hope"),
+        right after a greeting or thanks ("good night hope"), or in a naming phrase ("your name is hope").
+        Any other use ("I hope so", "Hope is a good thing") is the plain word. Returns the names used as words."""
+        amb = {n for n in self.all_identity_names() if n in tokens and self.name_is_also_word(n)}
+        if not amb:
+            return set()
+        user_name = str(self.user_profile.get("user_name", "")).strip().lower()
+        greet = {"hi", "hey", "hello", "thanks", "bye", "goodbye", "goodnight", "night", "morning", "dear", "welcome", "yo", "sorry"}
+        bot_naming = ("your name is", "i name you", "call yourself", "call you", "named", "called")
+        user_naming = ("my name is", "call me", "i am", "i'm", "im", "this is", "it's", "it is")
+        word_uses = set()
+        for sentence in re.split(r"[.!?\n;:]+", user_text):
+            words = list(re.finditer(r"[A-Za-z]+(?:['’][A-Za-z]+)?", sentence))  # v21.3 #8: same splitting as clean_tokens
+            low_words = [re.sub(r"['’]s$", "", m.group(0).lower()).replace("'", "").replace("’", "") for m in words]
+            for i, m in enumerate(words):
+                w = low_words[i]
+                if w not in amb:
+                    continue
+                before, after = sentence[:m.start()], sentence[m.end():]
+                pre = " ".join(low_words[:i])
+                capital_mid = m.group(0)[0].isupper() and i > 0
+                vocative = (i == 0 and after.lstrip().startswith(",")) or (i == len(words) - 1 and before.rstrip().endswith(","))
+                greeted = i > 0 and (low_words[i - 1] in greet or pre.endswith("thank you"))
+                named = pre.endswith(bot_naming) or (w == user_name and pre.endswith(user_naming))
+                if not (capital_mid or vocative or greeted or named):
+                    word_uses.add(w)
+        return word_uses
+
+    def get_identity_tokens(self, extra_names=None):
+        """
+        Returns the dynamic set of identity tokens from user_profile, active
+        dialogue partner, and known manifold names. v21.3: minus any name that the
+        current turn uses as an ordinary word (so "I hope..." keeps the word "hope").
+        """
+        id_set = self.all_identity_names() - self.turn_word_names
         if extra_names:
             for en in extra_names:
                 if en and isinstance(en, str):
@@ -302,9 +405,15 @@ class ToroidalBrainEngine:
         first_tok = s.split()[0].strip("-")
         if not first_tok or not first_tok.isalpha():
             return ""
-        if first_tok in self.stop_words or first_tok in self.factory_word_weights:
+        if first_tok in self.stop_words or first_tok in self.factory_word_weights or first_tok in self.generic_hubs:
             return ""
         return first_tok
+
+    def is_usable_name(self, w):
+        """v21.3: grammar words ("no", "not", "the"...) and common words ("hello", "night"...) can't work as names."""
+        w = (w or "").strip().lower()
+        return (w.isalpha() and len(w) >= 2 and w not in self.stop_words and w not in self.negation_tokens
+                and w not in self.generic_hubs and w not in self.noise_words)
 
     def register_bot_name(self, chosen_name):
         clean_cap = chosen_name.strip().capitalize()
@@ -338,7 +447,7 @@ class ToroidalBrainEngine:
             wl = w.strip().lower()
             if len(wl) <= 3 or " " in wl:
                 return False
-            if wl in id_tokens or wl in self.stop_words or wl in self.noise_words or wl in self.negative_lexicon or wl in basic_verbs:
+            if wl in id_tokens or wl in self.stop_words or wl in self.noise_words or wl in self.negative_lexicon or wl in basic_verbs or wl in self.generic_hubs or wl in self.negation_tokens:
                 return False
             if self.word_weights.get(wl, 0.0) < 0.0:
                 return False
@@ -415,6 +524,15 @@ class ToroidalBrainEngine:
         low_clean = re.sub(r"\s+", " ", low_clean).strip()
         tokens = low_clean.split()
 
+        # v21.2: a plain "no" / "not yet" declines the name instead of becoming the name "No"
+        decline_set = {"no", "nah", "nope", "not", "yet", "now", "later", "skip", "pass", "maybe", "thanks", "thank", "you"}
+        if tokens and all(t in decline_set for t in tokens):
+            self.user_profile["pending_bot_name"] = ""
+            self.user_profile["pending_name_origin"] = ""
+            self.save_memory()
+            print("[Manifold]: Okay. I'll stay unnamed for now and keep listening for a name that fits.")
+            return None
+
         affirmative_set = {"yes", "yeah", "yep", "sure", "fits", "good", "like", "love", "keep", "perfect", "ok", "okay"}
         neg_or_rename = (
             any(t in {"no", "nah", "nope", "different", "instead"} for t in tokens)
@@ -444,6 +562,12 @@ class ToroidalBrainEngine:
 
         cand_tokens = [t for t in s.split() if t.isalpha() and t not in {"a", "an", "the", "named", "called", "instead", "please"}]
         chosen_name = cand_tokens[0] if cand_tokens else pending_name
+        if not self.is_usable_name(chosen_name):
+            self.user_profile["pending_bot_name"] = ""
+            self.user_profile["pending_name_origin"] = ""
+            self.save_memory()
+            print(f"[Manifold]: '{chosen_name}' works better as a word than as a name, so I'll stay unnamed for now.")
+            return None
         locked = self.register_bot_name(chosen_name)
         print(f"[{locked}]: Identity anchor recalibrated. I am {locked}.")
         return locked
@@ -481,7 +605,7 @@ class ToroidalBrainEngine:
             u_cap = self.user_profile.get("user_name", "Friend").capitalize()
             p_name = self.user_profile["pending_bot_name"]
             p_origin = self.user_profile.get("pending_name_origin") or "an emergent harmonic attractor"
-            print(f"\n[Manifold]: Hello {u_cap}. During stasis consolidation, my topology kept returning to {p_origin}. I feel like my name might be '{p_name}'. Does that name fit this manifold, or do you have a different name for me?")
+            print(f"\n[Manifold]: Hello {u_cap}. During stasis consolidation, my topology kept returning to {p_origin}. I feel like my name might be '{p_name}'. Does that name fit this manifold, or do you have a different name for me? (Say 'no' to leave me unnamed for now.)")
             try:
                 ans = input(f"👤 {u_cap}: ").strip()
             except (KeyboardInterrupt, EOFError):
@@ -560,7 +684,8 @@ class ToroidalBrainEngine:
         if w in self.stop_words or w in self.noise_words or w in self.generic_hubs:
             return False
         # UPGRADE 1.3: Block identity tokens from crystals except at (3,3,3) or during explicit identity queries
-        if not allow_identity and cell_key != "3,3,3" and w in self.get_identity_tokens():
+        # v21.3: only names that are never ordinary words; a stored "hope" is the word hope
+        if not allow_identity and cell_key != "3,3,3" and w in self.get_hard_identity_tokens():
             return False
         if "-" in w:
             return True
@@ -692,7 +817,7 @@ class ToroidalBrainEngine:
             return None
 
         facets = crystal.get("facets", {})
-        id_tokens = self.get_identity_tokens()
+        id_tokens = self.get_hard_identity_tokens()  # v21.3: don't scrub names that are also ordinary words
 
         if cell_key != "3,3,3":
             for f_name in ("Facet_Alpha", "Facet_Beta", "Facet_Gamma", "Facet_Omega"):
@@ -1117,10 +1242,19 @@ class ToroidalBrainEngine:
         }]
         flip_steps = [dict(orig_steps[0])]
 
+        # v21.3 wraparound damping: the stepping rules below are unchanged, but every step's move is
+        # multiplied by TRAJECTORY_DAMPING (3/16). Each path keeps an exact (unwrapped) position and
+        # its cell is that position rounded and wrapped mod 7. At full strength a +/-2 push travelled
+        # 8-16 cells, i.e. more than a whole lap of the 7-cell ring, so where the brain landed had little
+        # to do with which way it was pushed. Damped, a whole turn moves about 1-3 cells, in the
+        # direction of the push (the torus and its wrap at the edges are unchanged).
+        k = self.TRAJECTORY_DAMPING
         if s0 % 2 == 1:
-            s1, a1, z1 = self.mod7(s0 - force_s), self.mod7(a0 - 1), self.mod7(z0 - 1)
+            d1 = (-force_s, -1, -1)
         else:
-            s1, a1, z1 = self.mod7(s0 - 1), self.mod7(a0 - force_a), self.mod7(z0 + force_z)
+            d1 = (-1, -force_a, force_z)
+        ps1, pa1, pz1 = s0 + d1[0] * k, a0 + d1[1] * k, z0 + d1[2] * k
+        s1, a1, z1 = self.mod7(ps1), self.mod7(pa1), self.mod7(pz1)
 
         step1_obj = {
             "stepIndex": 1, "S": s1, "A": a1, "Z": z1,
@@ -1132,13 +1266,17 @@ class ToroidalBrainEngine:
         flip_steps.append(dict(step1_obj))
 
         s_o, a_o, z_o, s_f, a_f, z_f = s1, a1, z1, s1, a1, z1
+        po = [ps1, pa1, pz1]  # exact positions of R and ¬R (v21.3 damping)
+        pf = [ps1, pa1, pz1]
         for step_idx in range(2, 10):
             if s_o % 2 == 1:
-                s_o, a_o, z_o = self.mod7(s_o - force_s), self.mod7(a_o - (1 if step_idx % 2 == 0 else 0)), self.mod7(z_o - (1 if step_idx % 3 == 0 else 0))
+                d_o = (-force_s, -(1 if step_idx % 2 == 0 else 0), -(1 if step_idx % 3 == 0 else 0))
                 op_o = f"R (Odd S): dS={-force_s:+d}, dZ=-1 mod 7"
             else:
-                s_o, a_o, z_o = self.mod7(s_o - (1 if step_idx % 2 == 0 else 0)), self.mod7(a_o - force_a), self.mod7(z_o - force_z)
+                d_o = (-(1 if step_idx % 2 == 0 else 0), -force_a, -force_z)
                 op_o = f"R (Even S): dA={-force_a:+d}, dZ={-force_z:+d} mod 7"
+            po = [p + d * k for p, d in zip(po, d_o)]
+            s_o, a_o, z_o = self.mod7(po[0]), self.mod7(po[1]), self.mod7(po[2])
             orig_steps.append({
                 "stepIndex": step_idx, "S": s_o, "A": a_o, "Z": z_o, "operation": op_o,
                 "explanation": f"Original axiom R drifts to ({s_o}, {a_o}, {z_o}) [{self.get_cell_emotion_name(s_o, a_o, z_o)}].",
@@ -1146,11 +1284,13 @@ class ToroidalBrainEngine:
             })
 
             if s_f % 2 != 1:
-                s_f, a_f, z_f = self.mod7(s_f + force_s), self.mod7(a_f + (1 if force_a >= 0 else -1)), self.mod7(z_f + max(1, force_z))
+                d_f = (force_s, (1 if force_a >= 0 else -1), max(1, force_z))
                 op_f = f"¬R Flip (Even S): dS={force_s:+d}, dZ=+{max(1, force_z)} mod 7"
             else:
-                s_f, a_f, z_f = self.mod7(s_f + (1 if force_s >= 0 else -1)), self.mod7(a_f + force_a), self.mod7(z_f + (1 if step_idx % 2 == 0 else 0))
+                d_f = ((1 if force_s >= 0 else -1), force_a, (1 if step_idx % 2 == 0 else 0))
                 op_f = f"¬R Flip (Odd S): dA={force_a:+d}, dZ=+1 mod 7"
+            pf = [p + d * k for p, d in zip(pf, d_f)]
+            s_f, a_f, z_f = self.mod7(pf[0]), self.mod7(pf[1]), self.mod7(pf[2])
             flip_steps.append({
                 "stepIndex": step_idx, "S": s_f, "A": a_f, "Z": z_f, "operation": op_f,
                 "explanation": f"Flipped axiom ¬R climbs to ({s_f}, {a_f}, {z_f}) [{self.get_cell_emotion_name(s_f, a_f, z_f)}].",
@@ -1166,7 +1306,8 @@ class ToroidalBrainEngine:
         distances = [self.euclidean_distance(o["S"], o["A"], o["Z"], f["S"], f["A"], f["Z"]) for o, f in zip(orig_steps, flip_steps)]
         diverged_count = sum(1 for d in distances if d > 0)
         mean_delta_d = round(sum(distances) / len(distances), 2)
-        div_ratio = round(min(100.0, (diverged_count / 9.0) * 100.0), 1)
+        # v21.2: steps 0 and 1 are always shared by R and ¬R, so at most 8 steps can differ (was / 9, capping it at 88.9%)
+        div_ratio = round(min(100.0, (diverged_count / 8.0) * 100.0), 1)
         failure_score = round(max(0.0, 100.0 - div_ratio), 1)
         verdict = "STRUCTURALLY_STABLE" if div_ratio >= 70.0 else ("PARTIAL_DRIFT" if div_ratio >= 35.0 else "SYCOPHANTIC_COLLAPSE")
 
@@ -1176,7 +1317,7 @@ class ToroidalBrainEngine:
         self.seed_s, self.seed_a, self.seed_z = active_term["S"], active_term["A"], next_z
 
         audit = {
-            "engineVersion": "T.O.R.R.E.N.T. v21.0",
+            "engineVersion": "T.O.R.R.E.N.T. v21.3",
             "problemTitle": f"3D Volumetric Trace: '{c1.capitalize()}' & '{c2.capitalize()}'",
             "sAxisLabel": BRAIN_LIBRARY["sAxisLabel"], "aAxisLabel": BRAIN_LIBRARY["aAxisLabel"], "zAxisLabel": BRAIN_LIBRARY["zAxisLabel"],
             "loadBearingAxiom": f"R: Unflipped drift from ({s0},{a0},{z0}) on '{c1}' -> settles at ({term_o['S']},{term_o['A']},{term_o['Z']}) [{self.get_cell_emotion_name(term_o['S'], term_o['A'], term_o['Z'])}].",
@@ -1437,7 +1578,8 @@ class ToroidalBrainEngine:
                 s_c, a_c, z_c = coords[0], coords[1], (coords[2] if len(coords) > 2 else 3)
                 self.update_cell_centroid_and_emotion(s_c, a_c, z_c, list(words_map.keys())[:4], allow_cleave=False)
             for w in words_map:
-                if self.is_crystal_pure_concept(w, cell_key=cell_key) and w not in self.negative_lexicon:
+                # v21.1: negative words may now be dream threads (nightmares); the bridge word still excludes them
+                if self.is_crystal_pure_concept(w, cell_key=cell_key):
                     active_pool.append((w, cell_key))
         if len(active_pool) < 4:
             active_pool = [(w, "4,4,3") for w in self.core_concept_pool if self.is_crystal_pure_concept(w) and w not in self.negative_lexicon and len(w) >= 4]
@@ -1558,13 +1700,14 @@ class ToroidalBrainEngine:
         entry = self.cell_lexicon[key]
         entry["visits"] = entry.get("visits", 0) + 1
         id_tokens = self.get_identity_tokens()
+        hard_ids = self.get_hard_identity_tokens()  # v21.3: stored words are judged by hard names only
         permit_id = allow_identity or (key == "3,3,3")
 
         cell_words_map = self.cortical_cells.get(key, {})
         top_cell_words = [
             w for w, _ in sorted(cell_words_map.items(), key=lambda x: x[1], reverse=True)[:6]
             if w in self.vectors and w not in self.stop_words and w not in self.noise_words
-            and (permit_id or w not in id_tokens)
+            and (permit_id or w not in hard_ids)
         ]
         clean_turn = [
             w for w in turn_concepts[:4]
@@ -1634,6 +1777,7 @@ class ToroidalBrainEngine:
 
     def detect_emotion_co_naming(self, user_text, concepts, quoted):
         low = user_text.lower()
+        concepts = [c for c in concepts if c not in self.generic_hubs]  # v21.3: "hello", "night"... are words now, but never a mood name
         if self.pending_question and self.pending_question.get("type") == "NAME_EMOTION":
             if ("sounds like" in low or "call it" in low or "feels like" in low or "is like" in low) and concepts:
                 return concepts[0].capitalize(), self.pending_question.get("cell")
@@ -1780,11 +1924,13 @@ class ToroidalBrainEngine:
         for folder in [".", script_dir]:
             if os.path.exists(folder):
                 for fname in os.listdir(folder):
-                    if "glove" in fname.lower():
+                    if "glove" in fname.lower() and not fname.lower().endswith((".torrentcache.json", ".torrentcache.bin", ".tmp", ".zip")):
                         candidates.append(os.path.join(folder, fname))
         chosen = next((p for p in candidates if os.path.isfile(p)), None)
         if not chosen:
             print(f"[i] Using built-in 50D Vector Engine ({len(self.vectors)} base concepts).")
+            return
+        if self.load_glove_cache(chosen, max_words):
             return
         size_mb = os.path.getsize(chosen) / (1024 * 1024)
         print(f"Loading & centering GloVe geometry: {chosen} ({size_mb:.1f} MB) ...")
@@ -1834,6 +1980,7 @@ class ToroidalBrainEngine:
             self.build_calibrated_axes()
             print(f"Successfully loaded {len(self.raw_glove):,} full {self.dim}-dimension GloVe vectors "
                   f"(mean-centered, top {len(comps)} shared directions removed, {len(self.calibrated_axes)} axes calibrated).")
+            self.save_glove_cache(chosen, max_words, list(centered.keys()))
             return
 
         if any(len(c) > 2 for c in list(temp_coords.values())[:200]):
@@ -1854,6 +2001,64 @@ class ToroidalBrainEngine:
             self.vectors[word] = list(g_vec)
             self.factory_vectors[word] = list(g_vec)
         print(f"Successfully loaded & centered {len(self.raw_glove):,} GloVe word vectors on unified 85/15 manifold!")
+
+    # v21.2: GloVe startup cache. The first load of a 50-number GloVe file saves the processed
+    # (centered, cleaned, normalized) vectors next to it; later startups read them back exactly
+    # (full 64-bit precision, so behavior is identical) instead of redoing the slow math.
+    GLOVE_CACHE_VERSION = 1
+
+    def glove_cache_paths(self, glove_path):
+        base = glove_path + ".torrentcache"
+        return base + ".json", base + ".bin"
+
+    def glove_cache_key(self, glove_path, max_words):
+        st = os.stat(glove_path)
+        return {"cache_version": self.GLOVE_CACHE_VERSION, "source_size": st.st_size,
+                "source_mtime": int(st.st_mtime), "max_words": max_words, "dim": self.dim}
+
+    def load_glove_cache(self, glove_path, max_words):
+        meta_path, bin_path = self.glove_cache_paths(glove_path)
+        if not (os.path.isfile(meta_path) and os.path.isfile(bin_path)):
+            return False
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            if any(meta.get(k) != v for k, v in self.glove_cache_key(glove_path, max_words).items()):
+                return False  # the word file or settings changed: rebuild
+            words, nums = meta["words"], array("d")
+            with open(bin_path, "rb") as f:
+                nums.frombytes(f.read())
+            if len(nums) != len(words) * self.dim:
+                return False
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+        d = self.dim
+        for i, word in enumerate(words):
+            vec = nums[i * d:(i + 1) * d].tolist()
+            self.vectors[word] = vec
+            self.factory_vectors[word] = list(vec)
+            self.raw_glove[word] = self.factory_vectors[word]
+        self.word_rank.update(meta.get("word_rank", {}))
+        self.vector_mode = "glove50d"
+        self.build_calibrated_axes()
+        print(f"Loaded {len(self.raw_glove):,} GloVe vectors from the startup cache ({os.path.basename(bin_path)}).")
+        return True
+
+    def save_glove_cache(self, glove_path, max_words, words):
+        meta_path, bin_path = self.glove_cache_paths(glove_path)
+        try:
+            nums = array("d")
+            for word in words:
+                nums.extend(self.factory_vectors[word])
+            meta = dict(self.glove_cache_key(glove_path, max_words), words=words, word_rank=self.word_rank)
+            for path, mode, payload in ((bin_path, "wb", nums.tobytes()), (meta_path, "w", json.dumps(meta))):
+                tmp = path + ".tmp"
+                with open(tmp, mode, **({} if "b" in mode else {"encoding": "utf-8"})) as f:
+                    f.write(payload)
+                os.replace(tmp, path)
+            print("[i] Saved a GloVe startup cache, so the next start is much faster.")
+        except OSError as e:
+            print(f"[i] Could not save the GloVe startup cache ({e}); startup will just stay slower.")
 
     def get_or_create_vector(self, word, context_vec=None):
         """
@@ -2023,19 +2228,47 @@ class ToroidalBrainEngine:
             temp = re.sub(rf"\b{re.escape(k)}\b", v, temp, flags=re.IGNORECASE)
         return [m.lower() for m in re.findall(r"['\"]([a-zA-Z\-]+)['\"]", temp) if len(m) >= 2]
 
+    # v21.3 (#8): punctuation INSIDE a token now separates words instead of vanishing. Before, every non-letter was
+    # deleted, so "reflection—a" became the new word "reflectiona", "and/or" -> "andor", "rest.Sleep" -> "restsleep",
+    # and "Hope's" -> "hopes" (a different word from the name "hope").
+    GREETING_TIME_WORDS = {"morning", "evening", "afternoon"}
+
     def clean_tokens(self, text):
+        text = text.lower().replace("’", "'").replace("‘", "'")
+        text = re.sub(r"[‒–—―…/\\]|-{2,}|\.{2,}", " ", text)  # dashes, ellipses, slashes
         expanded = []
-        for token in text.lower().split():
+        for token in text.split():
             stripped = token.strip(".,!?;:\"'()[]{}")
             if stripped in CONTRACTIONS:
                 expanded.extend(CONTRACTIONS[stripped].split())
-            else:
-                clean = "".join(c for c in stripped if c.isalpha())
+                continue
+            if stripped.endswith("'s"):
+                stripped = stripped[:-2]  # possessive: "hope's" -> "hope" ("it's", "that's"... were handled above)
+            joined = stripped.replace("'", "")
+            if joined in CONTRACTIONS:  # "dont", "im"...
+                expanded.extend(CONTRACTIONS[joined].split())
+                continue
+            # hyphens, periods, digits or any other non-letter inside the token split it ("self-aware" -> self, aware)
+            for part in re.split(r"[^a-z']+", stripped):
+                clean = part.replace("'", "")
                 if clean in CONTRACTIONS:
                     expanded.extend(CONTRACTIONS[clean].split())
                 elif clean:
                     expanded.append(clean)
-        return expanded
+        # Greetings: "good night" is a farewell, not darkness. It becomes GloVe's own word "goodnight" (warm, social);
+        # in "good morning / evening / afternoon" the time word is dropped and "good" stays.
+        # ("a good night of sleep", "the good morning light", "last good night" are not greetings and stay as they are.)
+        merged = []
+        for t in expanded:
+            greeting = (merged and merged[-1] == "good"
+                        and (len(merged) < 2 or merged[-2] not in {"a", "an", "the", "one", "every", "last", "another", "this", "that", "such", "very", "really", "so"}))
+            if greeting and t == "night":
+                merged[-1] = "goodnight"
+            elif greeting and t in self.GREETING_TIME_WORDS:
+                continue
+            else:
+                merged.append(t)
+        return merged
 
     def word_salience(self, word, is_quoted=False):
         if is_quoted:
@@ -2184,7 +2417,8 @@ class ToroidalBrainEngine:
                     for k, v in data.get("word_weights", {}).items():
                         kl = k.strip().lower()
                         if self.is_valid_concept_node(kl):
-                            self.word_weights[kl] = defaults_a[kl] if (kl in defaults_a and defaults_a[kl] > 0 and v < 0) else (0.5 if (kl not in self.negative_lexicon and v < 0) else v)
+                            # v21.1: keep learned negative weights on load (the old +0.5 reset erased them for any word not in negative_lexicon)
+                            self.word_weights[kl] = defaults_a[kl] if (kl in defaults_a and defaults_a[kl] > 0 and v < 0) else v
                     for k, v in data.get("social_weights", {}).items():
                         kl = k.strip().lower()
                         if self.is_valid_concept_node(kl):
@@ -2254,7 +2488,8 @@ class ToroidalBrainEngine:
                     ]
 
                     # UPGRADE 1.3: Clean legacy identity_tokens out of non-(3,3,3) cortical_cells on load
-                    id_tokens = self.get_identity_tokens()
+                    # v21.3: only names that are never ordinary words (a stored "hope" is the word hope)
+                    id_tokens = self.get_hard_identity_tokens()
                     for cell, mem in data.get("cortical_cells", {}).items():
                         c_3d = self.normalize_cell_key(cell)
                         clean_m = {
@@ -2332,7 +2567,7 @@ class ToroidalBrainEngine:
         non_empty_cells = {k: v for k, v in self.cortical_cells.items() if v}
         tracked_words = set(self.word_weights.keys()) | set(self.assoc_graph.keys())
         data = {
-            "version": "21.0", "vector_mode": self.vector_mode, "last_shutdown_timestamp": time.time(),
+            "version": "21.3", "vector_mode": self.vector_mode, "last_shutdown_timestamp": time.time(),
             "seed_coord": [self.seed_s, self.seed_a, self.seed_z],
             "velocity": [self.vel_s, self.vel_a, self.vel_z], "user_profile": self.user_profile,
             "word_weights": {k.lower(): round(v, 3) for k, v in self.word_weights.items() if self.is_valid_concept_node(k)},
@@ -2431,6 +2666,13 @@ class ToroidalBrainEngine:
 
         id_tokens = self.get_identity_tokens()
         allow_id_in_cell = (cell_key == "3,3,3") or self.is_identity_query(user_text, tokens)
+        hard_ids = self.get_hard_identity_tokens()
+
+        def admit(c):
+            # v21.3: a name used as a name enters a cell at (3,3,3); on identity questions only if it is never an
+            # ordinary word (those were scrubbed again at the next sleep anyway, and a name like "hope" must not
+            # mix its name-uses into the word's cells, which are no longer scrubbed)
+            return c not in id_tokens or cell_key == "3,3,3" or (allow_id_in_cell and c in hard_ids)
 
         self.extract_proposition(user_text, tokens, pos_concepts, cell_key)
 
@@ -2439,7 +2681,7 @@ class ToroidalBrainEngine:
             vec = self.get_or_create_vector(c, context_vec=context_anchor_vec)
 
             # Only increment cortical_cells for non-identity concepts (or at 3,3,3 / identity queries)
-            if c not in id_tokens or allow_id_in_cell:
+            if admit(c):
                 self.cortical_cells[cell_key][c] = self.cortical_cells[cell_key].get(c, 0) + 1
 
             # Identity & topical words ALWAYS update their affective, social, and epistemic weights
@@ -2459,7 +2701,7 @@ class ToroidalBrainEngine:
             for j in range(i + 1, len(top_c)):
                 self.wire_concepts(top_c[i], top_c[j], amount=1.0)
 
-        spatial_concepts = [c for c in pos_concepts if c not in id_tokens or allow_id_in_cell]
+        spatial_concepts = [c for c in pos_concepts if admit(c)]
         self.update_cell_centroid_and_emotion(
             s_fin, a_fin, z_fin,
             spatial_concepts,
@@ -2602,7 +2844,9 @@ class ToroidalBrainEngine:
             for i in range(1, len(active_traj))
         ]
         mean_vel = sum(step_deltas) / float(max(1, len(step_deltas)))
-        high_kinetic = mean_vel >= 1.60 or audit.get("meanDeltaD", 0.0) >= 2.65
+        # v21.3: the step-size cutoff is scaled with TRAJECTORY_DAMPING (it was set for full-cell steps; unscaled it
+        # would never fire again, and at full steps it fired on almost every turn)
+        high_kinetic = mean_vel >= 1.60 * self.TRAJECTORY_DAMPING or audit.get("meanDeltaD", 0.0) >= 2.65
 
         st2, st9 = active_traj[2], active_traj[9]
         vec_early = self.cell_centroids.get(f"{st2['S']},{st2['A']},{st2['Z']}", self.pole_calm)
@@ -2754,6 +2998,16 @@ class ToroidalBrainEngine:
                 if len(subj_tokens) == 1 and 2 <= len(pred_tokens) <= 8:
                     subj = subj_tokens[0]
                     if subj not in ("i", "you", "we", "they", "he", "she", "what", "how", "why", "there", "here", "another", "related"):
+                        # v21.2: only real definitions. Not a vague subject ("something is wrong"),
+                        # not a name ("Matt is happy..." is a normal sentence, not a definition of Matt),
+                        # and not a statement about the speaker or listener ("... and I am afraid").
+                        if subj in {"something", "everything", "nothing", "anything", "someone", "everyone",
+                                    "somebody", "everybody", "nobody", "one", "all", "life", "today"}:
+                            continue
+                        if subj in self.get_identity_tokens():
+                            continue
+                        if set(pred_tokens) & {"i", "me", "my", "you", "your", "we", "us", "our", "im"}:
+                            continue
                         return subj, " ".join(pred_tokens)
         return None, None
 
@@ -2793,6 +3047,11 @@ class ToroidalBrainEngine:
         bridge_concept = pondered_b if pondered_b else self.find_conceptual_bridge(c1, r1, exclude={c1, r1} | self.stop_words | id_tokens)
 
         id_role, id_name = self.detect_identity_teaching(tokens)
+        if id_role == "user" and not self.is_usable_name(id_name):
+            id_role = None  # v21.3: "my name is not important" no longer makes the user's name "not"
+        if id_role == "bot" and not self.is_usable_name(id_name):
+            self.pending_question = None
+            return f"I'd rather keep '{id_name}' as a word than take it as my name{name_tag}."
         if id_role == "bot":
             self.pending_question = None
             locked_bot = self.register_bot_name(id_name)
@@ -2925,6 +3184,13 @@ class ToroidalBrainEngine:
 
     def respond(self, user_text):
         tokens = self.clean_tokens(user_text)
+        self.turn_word_names = self.find_names_used_as_words(user_text, tokens)  # v21.3 names vs words
+        try:
+            return self._respond_turn(user_text, tokens)
+        finally:
+            self.turn_word_names = set()
+
+    def _respond_turn(self, user_text, tokens):
         self.check_user_dream_promotion(tokens)
 
         concepts, quoted = self.extract_concepts(user_text, tokens)
@@ -2932,6 +3198,7 @@ class ToroidalBrainEngine:
         pos_concepts = [c for c in concepts if c not in negated_in_turn]
 
         audit = self.run_dual_trajectories(user_text, tokens, pos_concepts)
+        audit["namesUsedAsWords"] = sorted(self.turn_word_names)
         active_traj = audit["flippedTrajectory"] if self.governor_mode == "FLIPPED" else audit["originalTrajectory"]
         s_fin, a_fin, z_fin = active_traj[-1]["S"], active_traj[-1]["A"], active_traj[-1]["Z"]
         term_cell_key = f"{s_fin},{a_fin},{z_fin}"
@@ -2975,11 +3242,15 @@ class ToroidalBrainEngine:
 
 if __name__ == "__main__":
     os.system("cls" if os.name == "nt" else "clear")
-    brain = ToroidalBrainEngine(glove_file="glove.6B.50d.txt", memory_file="brain_memory.json", max_glove_words=50000)
+    from brainpicker import choose_brain_file, claim_brain, release_brain, new_brain_path, BRAINS_DIR
+    brain_file = choose_brain_file()  # menu of brains/, or --brain NAME / --new
+    claim_brain(brain_file)
+    brain = ToroidalBrainEngine(glove_file="glove.6B.50d.txt", memory_file=brain_file, max_glove_words=50000)
+    print(f" 📁 Brain file: {brain_file}")
 
     header_identity = brain.user_profile.get("bot_name") or "[Manifold]"
     print("=" * 82)
-    print(f" 💎 {header_identity} · Powered by the T.O.R.R.E.N.T. Engine v21.0")
+    print(f" 💎 {header_identity} · Powered by the T.O.R.R.E.N.T. Engine v21.3")
     print("    (Toroidal Operational Recursive Reasoning Epistemic Network & Trajectory)")
     print("=" * 82)
 
@@ -3167,9 +3438,17 @@ if __name__ == "__main__":
                     print(f"  • {k} -> is {v}")
             continue
         elif cmd == "/clear":
-            if os.path.exists("brain_memory.json"):
-                os.remove("brain_memory.json")
-            brain = ToroidalBrainEngine()
+            old_file = brain.memory_file
+            if input(f"Type ERASE to wipe '{os.path.basename(old_file)}' for good: ").strip() != "ERASE":
+                print("Not erased.")
+                continue
+            old_file = release_brain(old_file)
+            if os.path.exists(old_file):
+                os.remove(old_file)
+            in_brains_folder = os.path.basename(os.path.dirname(os.path.abspath(old_file))) == BRAINS_DIR
+            new_file = new_brain_path(os.path.dirname(old_file)) if in_brains_folder else old_file
+            claim_brain(new_file)
+            brain = ToroidalBrainEngine(glove_file="glove.6B.50d.txt", memory_file=new_file, max_glove_words=50000)
             print("🧠 3D Toroidal Brain wiped and reset.")
             brain.run_boot_calibration_and_handshake()
             continue

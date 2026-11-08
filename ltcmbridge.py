@@ -1,6 +1,29 @@
 import json, os, re, shutil, socket, subprocess, sys, tempfile, time, urllib.request, urllib.error, wave
 from torrentengine import ToroidalBrainEngine, BRAIN_LIBRARY
 
+# Speed / connection settings (can be changed with environment variables, e.g. set TORRENT_LLM_TIMEOUT=400):
+LLM_TIMEOUT_SEC = float(os.environ.get("TORRENT_LLM_TIMEOUT", "240"))  # longest wait for the model to START answering (includes loading it)
+LLM_KEEP_ALIVE = os.environ.get("TORRENT_KEEP_ALIVE", "30m")           # Ollama keeps the model in memory this long between turns
+
+
+def cut_at_word(text, limit, keep="start"):
+    """Shorten text to at most `limit` characters without cutting a word in half.
+    keep="start" keeps the beginning; keep="end" keeps the end (the newest part of a growing summary).
+    Fixes fragments like "ndational" (from "foundational") that the model could copy into its reply,
+    after which the other brain learned them as new words."""
+    text = " ".join(str(text).split())
+    if len(text) <= limit:
+        return text
+    if keep == "end":
+        tail = text[-limit:]
+        if text[-limit - 1] != " ":
+            sp = tail.find(" ")
+            tail = tail[sp + 1:] if 0 <= sp < limit // 2 else tail
+        return tail
+    head = text[:limit + 1]
+    sp = head.rfind(" ")
+    return (head[:sp] if sp > limit // 2 else text[:limit]).rstrip()
+
 
 def detect_mobile_platform() -> bool:
     if "--pc" in sys.argv:
@@ -212,6 +235,9 @@ class TorrentLLMMiddleware:
             self.model_name = model_name or "gemma2"
             cands = [host] if host else ["http://127.0.0.1:11434", "http://127.0.0.1:1234", "http://127.0.0.1:8080", "http://127.0.0.1:12434"]
 
+        # A model chosen with TORRENT_MODEL or /model wins over whatever Ollama has loaded and over the "gemma" default
+        self.preferred_model = model_name or str(self.brain.knowledge_facts.get("_preferred_model", "")).strip()
+        self.force_merged_role = False  # set if the server rejects a separate system message (400/422)
         self.connected = False
         self.last_used_fallback = False
         self._warned_unreachable = False
@@ -251,8 +277,8 @@ class TorrentLLMMiddleware:
         ponder_prop = self.brain.last_thought_trace.get("pondering", {}).get("pondered_proposition", "")
 
         if salient_concepts:
-            su = user_text.strip().replace("\n", " ")[:90]
-            sb = llm_reply.strip().replace("\n", " ")[:110]
+            su = cut_at_word(user_text, 90)
+            sb = cut_at_word(llm_reply, 110)
             self.episodic_archive.append({
                 "timestamp": round(time.time(), 1),
                 "cell": cell_key,
@@ -276,7 +302,7 @@ class TorrentLLMMiddleware:
         self.brain.save_memory()
 
     def compress_turns_into_summary(self, older_messages: list) -> str:
-        lines = [f"{'User' if m['role'] == 'user' else 'AI'}: {m['content'][:160]}" for m in older_messages]
+        lines = [f"{'User' if m['role'] == 'user' else 'AI'}: {cut_at_word(m['content'], 160)}" for m in older_messages]
         prev = f"Previous Summary: {self.running_summary}\n" if self.running_summary else ""
         sum_prompt = (
             f"{prev}Recent Dialogue:\n" + "\n".join(lines) + "\n\n"
@@ -284,16 +310,9 @@ class TorrentLLMMiddleware:
         )
         if self.connected:
             try:
-                headers = {"Content-Type": "application/json", "Authorization": "Bearer local-lan", "Connection": "close"}
-                if self.backend == "ollama":
-                    payload = {"model": self.model_name, "messages": [{"role": "user", "content": sum_prompt}], "stream": False, "options": {"temperature": 0.3}}
-                else:
-                    payload = {"model": self.model_name, "messages": [{"role": "user", "content": sum_prompt}], "max_tokens": 90, "temperature": 0.3, "stream": False}
-                req = urllib.request.Request(self.endpoint, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-                with urllib.request.urlopen(req, timeout=25) as resp:
-                    compressed = self._parse_response_body(resp.read().decode("utf-8", errors="ignore"))
-                    if compressed:
-                        return compressed[:420]
+                compressed = self.stream_chat([{"role": "user", "content": sum_prompt}], max_tokens=120, temperature=0.3)
+                if compressed:
+                    return cut_at_word(compressed, 420)
             except Exception:
                 pass
 
@@ -304,7 +323,7 @@ class TorrentLLMMiddleware:
         recent_props = [p["summary"] for p in self.brain.idea_memory[-2:] if p.get("origin") == "waking"]
         prop_str = f" Key insight: {'; '.join(recent_props)}." if recent_props else ""
         new_note = f"Explored {top_c}.{prop_str}"
-        return f"{self.running_summary} Then: {new_note}"[-420:] if self.running_summary else new_note
+        return cut_at_word(f"{self.running_summary} Then: {new_note}", 420, keep="end") if self.running_summary else new_note
 
     def retrieve_relevant_episodes(self, user_text: str, salient_concepts: list, top_k: int = 3) -> list:
         query_vec = self.brain.phrase_to_vector(user_text)
@@ -457,7 +476,10 @@ class TorrentLLMMiddleware:
                     print(f"  [•] {m_url} -> {e}")
 
         self.available_models = found
-        if running_models:
+        preferred = self.normalize_model_name(self.preferred_model) if self.preferred_model else ""
+        if preferred and preferred in found:
+            self.model_name = preferred
+        elif running_models:
             self.model_name = running_models[0]
         elif found:
             self.model_name = self.normalize_model_name(self.model_name)
@@ -581,10 +603,70 @@ class TorrentLLMMiddleware:
             return data["response"].strip()
         return ""
 
+    def stream_chat(self, messages: list, max_tokens: int, temperature: float, show_progress: bool = False) -> str:
+        """Send one chat request and read the answer as it streams in.
+        Streaming matters on a slow PC: the timeout then only covers the wait for the model to START (and each
+        pause between pieces), not the whole reply, so a long answer can't time out while the model is still writing."""
+        headers = {"Content-Type": "application/json", "Authorization": "Bearer local-lan", "Connection": "close"}
+        if self.backend == "ollama":
+            payload = {"model": self.model_name, "messages": messages, "stream": True, "keep_alive": LLM_KEEP_ALIVE,
+                       "options": {"temperature": temperature, "num_predict": max_tokens}}
+        else:
+            payload = {"model": self.model_name, "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": True}
+        req = urllib.request.Request(self.endpoint, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+        pieces, raw_lines, shown = [], [], 0
+        if show_progress:
+            print(f"   ⏳ {self.model_name} ", end="", flush=True)
+        try:
+            with urllib.request.urlopen(req, timeout=LLM_TIMEOUT_SEC) as resp:
+                for raw in resp:
+                    line = raw.decode("utf-8", errors="ignore").strip()
+                    if not line:
+                        continue
+                    raw_lines.append(line)
+                    if line.startswith("data:"):
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            ch = json.loads(data).get("choices", [{}])[0]
+                            piece = ch.get("delta", {}).get("content") or ch.get("message", {}).get("content") or ""
+                        except (ValueError, AttributeError, IndexError):
+                            continue
+                    else:
+                        try:
+                            obj = json.loads(line)
+                        except ValueError:
+                            continue
+                        piece = (obj.get("message") or {}).get("content") or obj.get("response") or ""
+                        if obj.get("done"):
+                            pieces.append(piece)
+                            break
+                    pieces.append(piece)
+                    if show_progress and len(pieces) - shown >= 8:
+                        print(".", end="", flush=True)
+                        shown = len(pieces)
+        finally:
+            if show_progress:
+                print()
+        text = "".join(pieces).strip()
+        if not text and raw_lines:  # a server that ignored stream=True and sent one ordinary answer
+            text = self._parse_response_body("\n".join(raw_lines))
+        return text
+
+    def host_is_reachable(self) -> bool:
+        """Quick 2-second check that something is listening on the LLM port."""
+        hp = self.base_url.split("//")[-1]
+        ip, port = (hp.split(":", 1) + ["11434"])[:2]
+        try:
+            with socket.create_connection((ip, int(port.split("/")[0])), timeout=2.0):
+                return True
+        except OSError:
+            return False
+
     def call_local_llm(self, state_block: str, user_text: str, fallback_reply: str) -> str:
         self.last_used_fallback = False
-        headers = {"Content-Type": "application/json", "Authorization": "Bearer local-lan", "Connection": "close"}
-        use_merged_user_role = self.is_mobile or ("gemma" in self.model_name.lower() and self.backend == "openai")
+        use_merged_user_role = self.is_mobile or self.force_merged_role or ("gemma" in self.model_name.lower() and self.backend == "openai")
 
         recent_slice = self.chat_history[-self.keep_raw_len:] if self.keep_raw_len > 0 else []
         if recent_slice and recent_slice[0].get("role") != "user":
@@ -598,35 +680,39 @@ class TorrentLLMMiddleware:
             messages.extend(recent_slice)
             messages.append({"role": "user", "content": user_text})
 
-        if self.backend == "ollama":
-            payload = {"model": self.model_name, "messages": messages, "stream": False, "options": {"temperature": self.temperature}}
+        # Not connected: a quick 2 s check first, so an offline host can't stall every turn. If it answers, use the
+        # normal timeout. (Before, being "not connected" once meant every later reply got only 5 seconds, which a
+        # small PC can't meet, so the bridge looked disconnected for the rest of the session.)
+        if not self.connected and not self.host_is_reachable():
+            problem = f"nothing is listening at {self.base_url}"
         else:
-            payload = {"model": self.model_name, "messages": messages, "max_tokens": self.max_tokens, "temperature": self.temperature, "stream": False}
-
-        try:
-            req = urllib.request.Request(self.endpoint, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-            # Short timeout while no LLM is known to be reachable, so an offline host can't stall every turn
-            with urllib.request.urlopen(req, timeout=120 if self.connected else 5) as resp:
-                raw_body = resp.read().decode("utf-8", errors="ignore")
-                reply = self._parse_response_body(raw_body)
+            try:
+                reply = self.stream_chat(messages, self.max_tokens, self.temperature, show_progress=True)
                 if reply:
                     self.connected = True
                     self._warned_unreachable = False
                     return strip_performative_directions(reply) if not self.brain.training_wheels else reply
-        except urllib.error.HTTPError as e:
-            err_body = e.read().decode("utf-8", errors="ignore")
-            if not use_merged_user_role and e.code in (400, 422, 500):
-                self.is_mobile = True
-                return self.call_local_llm(state_block, user_text, fallback_reply)
-            print(f"\n[!] HTTP {e.code} from {self.endpoint}: {err_body[:200]}")
-        except Exception as e:
-            if not self._warned_unreachable:
-                print(f"\n[!] Connection error at {self.endpoint}: {e}")
-            self.connected = False
+                problem = "the model sent back an empty reply"
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode("utf-8", errors="ignore")
+                if not use_merged_user_role and e.code in (400, 422):
+                    self.force_merged_role = True  # this server wants everything in one user message; retry that way
+                    return self.call_local_llm(state_block, user_text, fallback_reply)
+                problem = f"HTTP {e.code}: {err_body[:200]}"
+            except (TimeoutError, socket.timeout):
+                problem = (f"the model didn't start answering within {LLM_TIMEOUT_SEC:.0f}s "
+                           f"(it may still be loading; raise TORRENT_LLM_TIMEOUT if this keeps happening)")
+            except urllib.error.URLError as e:
+                if isinstance(e.reason, (TimeoutError, socket.timeout)):
+                    problem = f"the model didn't start answering within {LLM_TIMEOUT_SEC:.0f}s"
+                else:
+                    self.connected = False  # the server itself is gone (refused / unreachable)
+                    problem = f"connection error: {e.reason}"
+            except (ConnectionError, OSError) as e:
+                self.connected = False
+                problem = f"connection error: {e}"
 
-        if not self._warned_unreachable:
-            print("    -> No LLM reply. Using T.O.R.R.E.N.T. native replies (this notice shows once; /test or /connect to retry).")
-            self._warned_unreachable = True
+        print(f"\n[!] No LLM reply this turn ({problem}). Using the T.O.R.R.E.N.T. native reply.")
         self.last_used_fallback = True
         return fallback_reply
 
@@ -724,7 +810,7 @@ class TorrentLLMMiddleware:
         self.last_post_audit = post_report
         if self.brain.last_audit is not None:
             self.brain.last_audit["llmPostProcessor"] = post_report
-        self.brain.save_memory()
+        # (no save here: record_turn_and_maybe_summarize saves the brain right after this, so one save per turn)
         self.brain.export_trace_file("latest_trace.json")
         return post_report
 
@@ -739,7 +825,11 @@ if __name__ == "__main__":
         print("🚀 Booting T.O.R.R.E.N.T. + Local LLM Bridge (Wheels-Off Mode)...")
 
     glove_limit = 50000
-    brain = ToroidalBrainEngine(glove_file="glove.6B.50d.txt", memory_file="brain_memory.json", max_glove_words=glove_limit)
+    from brainpicker import choose_brain_file, claim_brain, release_brain, new_brain_path, BRAINS_DIR
+    brain_file = choose_brain_file()  # menu of brains/, or --brain NAME / --new
+    claim_brain(brain_file)
+    brain = ToroidalBrainEngine(glove_file="glove.6B.50d.txt", memory_file=brain_file, max_glove_words=glove_limit)
+    print(f" 📁 Brain file: {brain_file}")
 
     middleware = TorrentLLMMiddleware(
         brain=brain,
@@ -914,7 +1004,8 @@ if __name__ == "__main__":
 
         elif cmd.startswith("/connect"):
             parts = user_input.split(maxsplit=1)
-            middleware.probe_and_connect(parts[1] if len(parts) > 1 else middleware.base_url, verbose=True)
+            middleware.connected = middleware.probe_and_connect(parts[1] if len(parts) > 1 else middleware.base_url, verbose=True)
+            middleware._warned_unreachable = False
             continue
 
         elif cmd == "/models":
@@ -927,7 +1018,10 @@ if __name__ == "__main__":
             parts = user_input.split(maxsplit=1)
             if len(parts) > 1:
                 middleware.model_name = middleware.normalize_model_name(parts[1])
-                print(f"[🔄 Switched model to: '{middleware.model_name}']")
+                middleware.preferred_model = middleware.model_name
+                brain.knowledge_facts["_preferred_model"] = middleware.model_name
+                brain.save_memory()
+                print(f"[🔄 Switched model to: '{middleware.model_name}' (remembered for next time)]")
             else:
                 print(f"Current model: {middleware.model_name}")
             continue
@@ -1054,9 +1148,17 @@ if __name__ == "__main__":
             continue
 
         elif cmd == "/clear":
-            if os.path.exists("brain_memory.json"):
-                os.remove("brain_memory.json")
-            brain = ToroidalBrainEngine(glove_file="glove.6B.50d.txt", memory_file="brain_memory.json", max_glove_words=glove_limit)
+            old_file = brain.memory_file
+            if input(f"Type ERASE to wipe '{os.path.basename(old_file)}' for good: ").strip() != "ERASE":
+                print("Not erased.")
+                continue
+            old_file = release_brain(old_file)
+            if os.path.exists(old_file):
+                os.remove(old_file)
+            in_brains_folder = os.path.basename(os.path.dirname(os.path.abspath(old_file))) == BRAINS_DIR
+            new_file = new_brain_path(os.path.dirname(old_file)) if in_brains_folder else old_file
+            claim_brain(new_file)
+            brain = ToroidalBrainEngine(glove_file="glove.6B.50d.txt", memory_file=new_file, max_glove_words=glove_limit)
             brain.training_wheels = False
             middleware.brain = brain
             middleware.chat_history = []
