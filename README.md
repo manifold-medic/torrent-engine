@@ -13,13 +13,14 @@ An experimental "language-enabled toroidal crystalline manifold" (LTCM): a small
 | File | Purpose |
 |---|---|
 | `torrentengine.py` | The engine (v21.0). Standard library only. |
+| `brainpicker.py` | Lets you keep several brains (TCMs) and choose one at start-up. Keep it in the same folder. |
 | `ltcmbridge.py` | The easiest way to start: loads the engine and, if a local LLM (Ollama or an OpenAI-compatible server) is reachable, uses it as a voice. Falls back to the engine's own replies otherwise. Optional local voice in/out. |
 | `TORRENT_DISCLOSURE.md` | Full technical description of how everything works, published as a defensive disclosure. |
 | `LICENSE` | Apache-2.0. |
 
 ## Quick start
 
-Keep both `.py` files in the same folder and run the bridge. It loads the engine automatically, so this one command is all you need:
+Keep the `.py` files in the same folder and run the bridge. It loads the engine automatically, so this one command is all you need:
 
 ```bash
 python ltcmbridge.py
@@ -34,7 +35,18 @@ You can also run the engine alone, with no bridge code at all:
 python torrentengine.py
 ```
 
-On first run it asks for a name to anchor the space. Type `/exit` to quit cleanly; this runs the sleep and dream cycle and saves state. State is saved to `brain_memory.json` and the latest audit to `latest_trace.json` in the working directory. These files are created locally and are not part of the repo.
+On first run it asks for a name to anchor the space. Type `/exit` to quit cleanly; this runs the sleep and dream cycle and saves state. The latest audit is saved to `latest_trace.json`. These files are created locally and are not part of the repo.
+
+### Several brains
+
+Each brain is saved in a `brains` folder as `brains/brain_<name>.json`, and at start-up you get a menu: pick a brain by number, or `N` for a new one. A new brain starts as `brain_new-<date-time>.json` and is renamed to its own name automatically once it has one. You can skip the menu:
+
+```bash
+python ltcmbridge.py --brain gyre     # open brains/brain_gyre.json
+python ltcmbridge.py --new            # start a new brain
+```
+
+An older single `brain_memory.json` next to the scripts shows up in the menu and can be moved into the `brains` folder (a backup copy is kept). While a brain is open, a `.lock` file marks it, so you're warned before opening the same brain in two windows, which would overwrite each other's saves. `/clear` now asks you to type `ERASE` first.
 
 ### Word file (optional)
 
@@ -45,9 +57,9 @@ The engine works with no extra files, using a small built-in vocabulary of about
 
 Use a separate folder for each kind of word file, because a saved brain belongs to the word space it was learned in. Details are in section 2.3 of the disclosure.
 
-Saves are crash-safe: the brain is written to a temporary file and swapped in. If `brain_memory.json` ever can't be read at start-up, it is renamed to `brain_memory.json.unreadable-<timestamp>` instead of being overwritten, so you can recover it.
+Saves are crash-safe: the brain is written to a temporary file and swapped in. If a brain file ever can't be read at start-up, it is renamed to `<file>.unreadable-<timestamp>` instead of being overwritten, so you can recover it.
 
-**Privacy:** `brain_memory.json` contains your conversation history. Don't upload it or share it.
+**Privacy:** brain files (the `brains` folder, or `brain_memory.json`) contain your conversation history. Don't upload it or share it.
 
 ### Configuration
 
