@@ -15,6 +15,7 @@ An experimental "language-enabled toroidal crystalline manifold" (LTCM): a small
 | `torrentengine.py` | The engine (v22.3). Standard library only. |
 | `brainpicker.py` | Lets you keep several brains (TCMs) and choose one at start-up. Keep it in the same folder. |
 | `ltcmbridge.py` | The easiest way to start: loads the engine and, if a local LLM (Ollama or an OpenAI-compatible server) is reachable, uses it as a voice. Falls back to the engine's own replies otherwise. Optional local voice in/out. |
+| `catchup_cells.py` | Optional one-time cleanup for a brain that grew overfull under an engine older than v21.7. Works on a copy. |
 | `TORRENT_DISCLOSURE.md` | Full technical description of how everything works, published as a defensive disclosure. |
 | `CHANGELOG.md` | What changed in each version. |
 | `LICENSE` | Apache-2.0. |
@@ -48,6 +49,21 @@ python ltcmbridge.py --new            # start a new brain
 ```
 
 An older single `brain_memory.json` next to the scripts shows up in the menu and can be moved into the `brains` folder (a backup copy is kept). While a brain is open, a `.lock` file marks it, so you're warned before opening the same brain in two windows, which would overwrite each other's saves. `/clear` now asks you to type `ERASE` first.
+
+### Old brains (from before v21.7)
+
+Brains that grew under older engines can be overfull: words sitting in dozens of cells, links that never fade. Newer
+engines heal them by themselves, a little every sleep, but slowly (roughly 50-60 sleeps). To clean one up at once, run
+`catchup_cells.py` from the main folder, next to `torrentengine.py` and the GloVe file:
+
+```bash
+python catchup_cells.py brains/brain_gyre.json brains/brain_gyre_cleaned.json
+```
+
+It writes a cleaned copy and never changes the original. Each word keeps its 10 strongest cells, each cell keeps its 6
+most-used words (`--keep`), and no count stays above 8 (`--max-count`); then the crystals are rebuilt. Links, word
+weights, memories, dreams and names are left alone. It prints before-and-after numbers so you can compare. Pick the
+cleaned copy in the start-up menu once you're happy with it.
 
 ### Word file (optional)
 
