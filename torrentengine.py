@@ -1,5 +1,82 @@
 # =============================================================================
 # T.O.R.R.E.N.T. engine (torrentengine.py) — CHANGELOG
+# v22.3 (2026-11-08)
+#   * Nightmare mode (off by default, saved per brain; /nightmare toggles it, TORRENT_NIGHTMARE=1 turns it on at start).
+#     The engine normally "leans up" on purpose so a brain can think about bad things without spiralling. Nightmare mode
+#     switches those rules off, to test whether the torus itself keeps a brain from spiralling: fear words may be dream
+#     bridges and names, recall stops dropping them, sleep's self-correction (softening tense links toward comfort) is
+#     skipped, and dreams with fear bridges are kept on load. The flip path is separate (/flip).
+# v22.2 (2026-11-08)
+#   * Sleep record fixes: it kept only the newest dream once the 30-entry dream journal was full (a brain away 87 hours
+#     dreamed 12 times but remembered 1); it reported time AWAY as time asleep ("a full night's sleep of about 87
+#     hours"); and anything under 8 hours was "a nap". Now: all of that sleep's dreams (up to 6 are kept), "slept about
+#     8 hours (away about 87)", and nap (< 4 h) / short night (4-8 h) / full night (8 h+).
+# v22.1 (2026-11-08)
+#   * The brain remembers its sleep: every wake-up sleep writes `last_sleep` (when, how long, nap or full night, the
+#     dreams it had, links released), saved in the brain file. The bridge uses it so "do you remember sleeping?" has a
+#     true answer instead of an invented one.
+#   * sleep_pressure_report(): the current sleep pressure as a level (rested / building / high / very high), measured in
+#     busy days of waking learning (SLEEP_PRESSURE_BUSY_DAY = 250, about 40 sentences). The bridge shows it and, when
+#     it's high, tells the model plainly that the brain is ready to rest. Learning itself is unchanged.
+# v22.0 (2026-11-08) — "sleep v2"
+#   * Sleep pressure. What the brain learns while awake (talking with you) builds pressure; it is saved in the brain file
+#     ("sleep_pressure") and drained at WAKE-UP, where the time away is known. Depth = hours away / SLEEP_FULL_HOURS (8),
+#     capped at 1: a 2-hour nap drains a quarter of the pressure and does a quarter of the scaling; a full night drains it
+#     all; sleeping longer does nothing extra. Under 30 minutes away is still no sleep. /exit no longer fades anything
+#     (it still dreams, scales hub links x0.90 and runs the self-correction, as before).
+#   * Only waking learning counts. Links made by sleep itself (cleave veins, dream links, self-correction) still form,
+#     but no longer count as the day's learning (an old brain's cleave storm used to speed up its own forgetting).
+#   * No overnight cliff. One sleep releases at most max(2% of all links, the links newly created since the last sleep),
+#     weakest first, scaled by depth. A saturated test brain used to release 24,000 links in one night; now ~680 a night.
+#     A busy brain still forgets about as fast as it learns.
+#   * The strongest 20% of links are spared from the nightly scaling (after de Vivo et al. 2017, Science: synapses are
+#     ~18% smaller after sleep, proportional to size, mostly in the weaker ~80%).
+#   Tests (2026-11-08, lab kit results/result_sleep3.md): busy fresh brain links level off (~5,800 at day 30); naps vs
+#   full nights end up in nearly the same place; naps alone never fully drain the pressure.
+# v21.9 (2026-11-08)
+#   * Sleep scales down in proportion to how much the brain learned since its last sleep (in the spirit of the
+#     "synaptic homeostasis" idea for real sleep). A quiet day barely fades anything; a busy day fades more; a brain
+#     nobody talks to doesn't fade at all. Two parts (see run_sleep_homeostasis_and_audit):
+#       - Cells: v21.7's fixed x0.97 per sleep is replaced by 1 - PRUNE_PER_PLACEMENT x (placements added since the last
+#         sleep). Calibrated so a 40-sentence day fades as before. At 12 sentences a day, v21.8 had shrunk to 152 cells
+#         and 2 words per cell by day 40; v21.9 keeps ~307 cells, ~6 words per cell and ~190 crystals.
+#       - Links: every link is scaled by 1 - LINK_FADE_PER_STRENGTH x (link strength added since the last sleep), and the
+#         0.25 floor is gone (it existed twice: in the hub scaling here and in the load-time repair). A link under
+#         LINK_DROP (0.15) is deleted, unless it was used since the last sleep. A word left with no links leaves the link
+#         graph (its weights and vector stay). The built-in starter links (the semantic cluster lists) fade like any
+#         other link and are no longer reset on load: protecting them re-saturated a busy test brain (333 crystals).
+#     73-day busy test (40 sentences a day): links level off at ~5,700 instead of climbing past 16,600; 217 crystals,
+#     ~90 cleaves a day. At normal use (12 a day, or the user's real chat pattern) no links were deleted in 40 days.
+#     This is the first version that can delete links: on the busy test brain, ~25% of day-1 words lost all links by day 73.
+# v21.8 (2026-11-08)
+#   * Crystals no longer drift down over time. A word with many links (and middling weights) doesn't count as crystal
+#     material. That cut was a fixed 18 links, but links never fade below 0.25, so link counts only grow: in a 73-day
+#     test 'hubs' went from 218 to 529 and crystals fell from ~180 to ~105. The cut is now relative: the top 10% of
+#     link counts (see hub_degree_cut). Same test: crystals hold at ~150-190, ~63 cleaves a day.
+# v21.7 (2026-11-08)
+#   * The torus no longer saturates. Before, a word's place in a cell was permanent: every landing added +1 forever, so
+#     a fresh brain fed Alice in Wonderland had all 343 cells crystallized by day 23 and cleaved ~800 times a day,
+#     and "said" sat in 217 cells. Now, once per sleep pass (see prune_cortical_cells):
+#       - A, pruning: every cell's word counts shrink by PRUNE_DECAY (x0.97); a placement under PRUNE_FLOOR (0.5) fades
+#         out of that cell. A word that landed once fades after ~23 sleeps; landing again keeps it.
+#       - C, spread cap: one word lives in at most MAX_CELLS_PER_WORD (10) cells, keeping its strongest placements.
+#     Same 73-day test: the brain settles at ~300 of 343 cells in use, ~5 words per cell, 100-170 crystals and
+#     ~40 cleaves a day. Links (assoc_graph), word weights and memories are untouched; only cell placements fade.
+#     The user's/brain's name at the origin cell 3,3,3 is protected. Cell counts are now decimals in the brain file.
+# v21.6 (2026-11-08)
+#   * Sleep's comfort bridge (Contrastive Self-Correction) habituates: a bridge used in recent sleeps is less likely
+#     to win again, and only words the brain has been told can be bridges. Before, the word nearest "calm"
+#     ("quiet") won ~44% of the time and became one of the brain's strongest words. See find_sleep_bridge.
+#     Brain files gain two keys: bridge_habituation and experienced_words (older brains start with both empty).
+# v21.5 (2026-11-08)
+#   * Annealing log is honest: a Facet_Alpha demotion is reported once, after the crystal's final rebuild. Before, the
+#     same demotion was printed twice per pass and then undone by the rebuild, so the log showed a state never saved.
+#     Brain behavior is unchanged (same calls in the same order; only what is printed/logged differs).
+# v21.4 (2026-11-08)
+#   * Teaching definitions works with wheels off (the bridge's default) and in natural sentences: each sentence is
+#     checked on its own, and the quoted form "a 'TCM' is a 'Toroidal-Crystalline Manifold'" (also means / stands
+#     for / represents) is recognized, so "That's not true." earlier in the message no longer blocks it.
+#   * "X means a b c" no longer also becomes a one-word idea ("tcm means crystalline") that was sent to the LLM.
 # v21.3 (2026-11-07)
 #   * Names vs words: a name that is also a normal word (Hope, Drift, Matt) only counts as a name when it is
 #     used as one (capitalized mid-sentence, "Hope, ...", "..., hope", "good night hope", "your name is hope").
@@ -184,12 +261,27 @@ class ToroidalBrainEngine:
         # UPGRADE 1: Known manifold & user identity tokens + active dialogue partner tracking
         self.base_identity_tokens = set()  # names come from user_profile / dialogue partner at runtime
         self.dialogue_partner_name = ""
+        self.turn_taught = {}  # v21.4: definitions the user taught in the current turn
         self.turn_word_names = set()  # v21.3: names used as ordinary words in the current turn (see find_names_used_as_words)
         self.identity_query_triggers = {"name", "named", "call", "called", "who", "identity", "yourself", "myself"}
 
         self.cell_centroids, self.cell_lexicon, self.trace_lexicon = {}, {}, {}
         self.crystal_lattices = {}
         self.cleavage_log = []
+        # v21.6: sleep-bridge habituation (word -> recent uses, halves every sleep pass) and the words this brain has
+        # actually been told (so a built-in word it never met can't become its default comfort word)
+        self.bridge_habituation = {}
+        self.experienced_words = set()
+        # v21.9: what was learned since the last sleep (sleep scales down in proportion to it)
+        self.cells_added_since_sleep = 0.0
+        self.link_strength_added_since_sleep = 0.0
+        self.links_used_since_sleep = set()
+        self.new_links_since_sleep = 0   # v22: links created since the last full sleep (sets the night's release limit)
+        self.awake_turn = False          # v22: True while answering the user (only that learning builds sleep pressure)
+        self.sleep_depth = None          # v22: set during a wake-up sleep (hours away / SLEEP_FULL_HOURS, max 1)
+        self.last_sleep = {}             # v22.1: memory of the last wake-up sleep (see run_stasis_sleep_pass)
+        self.last_sleep_released = 0     # v22.1: links released by the last wake-up sleep
+        self.nightmare_mode = False      # v22.3: switch off the engine's "lean up" rules (see lean_up_words)
         self.scratchpad = []
         self.boot_sleep_report = []
 
@@ -287,11 +379,20 @@ class ToroidalBrainEngine:
         self.load_glove(glove_file, max_glove_words)
         self.recompute_poles_and_coords()
         self.init_emotional_lexicon()
+        env_nm = os.environ.get("TORRENT_NIGHTMARE", "").strip()  # v22.3: set before loading, so the wake-up sleep follows it
+        if env_nm in ("0", "1"):
+            self.nightmare_mode = env_nm == "1"
         self.load_memory()
+        if env_nm in ("0", "1"):
+            self.nightmare_mode = env_nm == "1"  # the environment overrides what the brain file says
 
     # =================================================================
     # UPGRADE 1: DYNAMIC IDENTITY TOKEN REGISTRY & SELF-QUERY DETECTOR
     # =================================================================
+    def lean_up_words(self):
+        """v22.3: the fear words the engine keeps out of bridges, recall and names. Empty in nightmare mode."""
+        return set() if self.nightmare_mode else self.negative_lexicon
+
     def all_identity_names(self):
         """Every name the brain knows: the user's, its own (or pending) name, and an active dialogue partner's."""
         id_set = set(self.base_identity_tokens)
@@ -447,9 +548,9 @@ class ToroidalBrainEngine:
             wl = w.strip().lower()
             if len(wl) <= 3 or " " in wl:
                 return False
-            if wl in id_tokens or wl in self.stop_words or wl in self.noise_words or wl in self.negative_lexicon or wl in basic_verbs or wl in self.generic_hubs or wl in self.negation_tokens:
+            if wl in id_tokens or wl in self.stop_words or wl in self.noise_words or wl in self.lean_up_words() or wl in basic_verbs or wl in self.generic_hubs or wl in self.negation_tokens:
                 return False
-            if self.word_weights.get(wl, 0.0) < 0.0:
+            if self.word_weights.get(wl, 0.0) < 0.0 and not self.nightmare_mode:  # v22.3: nightmare mode allows dark names
                 return False
             return True
 
@@ -677,6 +778,20 @@ class ToroidalBrainEngine:
     # =================================================================
     # 1. PURITY FILTERING & DISJOINT 4-FACET CRYSTALLINE SUB-LATTICES
     # =================================================================
+    HUB_DEGREE_PERCENTILE = 0.90  # v21.8: a word whose link count is in the top 10% counts as a hub
+
+    def hub_degree_cut(self):
+        """v21.8: the link count above which a word counts as a hub for crystals. It was a fixed 18, but links never
+        drop below their 0.25 floor, so every word's link count only grows: in a 73-day test the number of 'hubs'
+        went from 218 (day 20) to 529 (day 73) and crystals drifted down. Now the cut is the 90th percentile of all
+        words' link counts (like a lab reference range), recomputed whenever the number of words changes."""
+        n = len(self.assoc_graph)
+        if getattr(self, "_hub_cut_n", None) != n:
+            degs = sorted(len(links) for links in self.assoc_graph.values())
+            self._hub_cut = degs[int(self.HUB_DEGREE_PERCENTILE * (len(degs) - 1))] if degs else 18
+            self._hub_cut_n = n
+        return self._hub_cut
+
     def is_crystal_pure_concept(self, word, cell_key=None, allow_identity=False):
         if not word or len(word) < 3 or " " in word:
             return False
@@ -690,7 +805,7 @@ class ToroidalBrainEngine:
         if "-" in w:
             return True
         deg = len(self.assoc_graph.get(w, {}))
-        if deg > 18:
+        if deg > self.hub_degree_cut():  # v21.8: relative (top 10% of degrees), was a fixed 18
             if abs(self.epistemic_weights.get(w, 0.0)) < 1.8 and abs(self.word_weights.get(w, 0.0)) < 2.2:
                 return False
         return True
@@ -1019,10 +1134,15 @@ class ToroidalBrainEngine:
         logs = []
         cleaved_this_pass = set()
 
-        # First, anneal any existing crystals in crystal_lattices (Upgrade 2.2: Facet_Alpha stress relief)
+        # First, anneal existing crystals (Upgrade 2.2: Facet_Alpha stress relief). Cells that the loop below rebuilds
+        # from scratch are annealed silently here and reported only after their final rebuild: before v21.5 the same
+        # demotion was printed twice per pass and then undone by the rebuild, so the log described a state never saved.
         for ck in list(self.crystal_lattices.keys()):
-            anneal_msg = self.anneal_crystal_facet_alpha(ck, notify=True)
-            if anneal_msg:
+            wm = self.cortical_cells.get(ck, {})
+            rebuilt_below = (sum(1 for w in wm if self.is_crystal_pure_concept(w, cell_key=ck)) >= 5
+                             and self.cell_lexicon.get(ck, {}).get("visits", 0) >= 2)
+            anneal_msg = self.anneal_crystal_facet_alpha(ck, notify=not rebuilt_below)
+            if anneal_msg and not rebuilt_below:
                 logs.append(anneal_msg)
 
         for cell_k, words_map in list(self.cortical_cells.items()):
@@ -1032,10 +1152,8 @@ class ToroidalBrainEngine:
                 was_cryst = cell_k in self.crystal_lattices
                 c_obj = self.nucleate_or_update_crystal(cell_k)
                 if c_obj:
-                    # Run Facet_Alpha stress relief if tension > 0.55
-                    anneal_msg = self.anneal_crystal_facet_alpha(cell_k, notify=True)
-                    if anneal_msg:
-                        logs.append(anneal_msg)
+                    # Run Facet_Alpha stress relief if tension > 0.55 (same steps as before; only the final result is reported)
+                    anneal_msg = self.anneal_crystal_facet_alpha(cell_k, notify=False)
 
                     alpha_w = c_obj["facets"]["Facet_Alpha"]["words"]
                     gamma_w = c_obj["facets"]["Facet_Gamma"]["words"]
@@ -1045,7 +1163,10 @@ class ToroidalBrainEngine:
                                 if aw != gw:
                                     self.apply_dialectical_repulsion(aw, gw, rate=0.06)
                         c_obj = self.nucleate_or_update_crystal(cell_k)
-                        self.anneal_crystal_facet_alpha(cell_k, notify=False)
+                        anneal_msg = self.anneal_crystal_facet_alpha(cell_k, notify=False)
+                    if anneal_msg:
+                        print(f"\n{anneal_msg}")
+                        logs.append(anneal_msg)
 
                 if c_obj and not was_cryst:
                     omega_w = c_obj["facets"]["Facet_Omega"]["words"][0]
@@ -1152,6 +1273,48 @@ class ToroidalBrainEngine:
     # 4. ELAPSED-TIME BOOT STASIS SLEEP CONSOLIDATION
     # =================================================================
     def run_stasis_sleep_pass(self, elapsed_hours):
+        self.sleep_depth = min(1.0, max(0.0, elapsed_hours / self.SLEEP_FULL_HOURS))  # v22: nap vs full night
+        depth, journal_kept = self.sleep_depth, list(self.dream_journal)  # holding them keeps their ids unique
+        journal_before = {id(d) for d in journal_kept}
+        self.last_sleep_released = 0
+        try:
+            report = self._run_stasis_sleep_pass(elapsed_hours)
+        finally:
+            self.sleep_depth = None
+        # v22.1: remember this sleep (the bridge can tell the model what really happened)
+        new = [d for d in self.dream_journal if id(d) not in journal_before]  # v22.2: works when the journal is full
+        slept = min(elapsed_hours, self.SLEEP_FULL_HOURS)
+        self.last_sleep = {
+            "woke_at": round(time.time(), 1), "hours": round(slept, 1), "away_hours": round(elapsed_hours, 1),
+            "kind": "a full night's sleep" if depth >= 1.0 else "a short night's sleep" if depth >= 0.5 else "a nap",
+            "dreams": [f"{d.get('threadA')} -> {d.get('bridge')} -> {d.get('threadB')}" for d in new][-6:],
+            "links_released": int(self.last_sleep_released),
+        }
+        return report
+
+    SLEEP_PRESSURE_BUSY_DAY = 250.0  # v22.1: waking link strength of a busy day (~40 sentences), the unit for the levels
+
+    def sleep_pressure_report(self):
+        """v22.1: sleep pressure as a level, in busy days of waking learning since the last full sleep."""
+        days = self.link_strength_added_since_sleep / self.SLEEP_PRESSURE_BUSY_DAY
+        level = "rested" if days < 0.25 else "building" if days < 1.0 else "high" if days < 2.0 else "very high"
+        return {"level": level, "days": round(days, 2), "pressure": round(self.link_strength_added_since_sleep, 1)}
+
+    def describe_last_sleep(self):
+        """v22.1: one plain sentence about the last wake-up sleep, or "" if none is recorded."""
+        ls = self.last_sleep or {}
+        if not ls.get("woke_at"):
+            return ""
+        ago_h = max(0.0, (time.time() - ls["woke_at"]) / 3600.0)
+        ago = "just now" if ago_h < 0.1 else f"about {ago_h:.0f} hour(s) ago" if ago_h >= 1 else f"about {ago_h * 60:.0f} minutes ago"
+        dreams = "; ".join(ls.get("dreams", [])[:4]) or "no dreams recorded"
+        slept = min(float(ls.get("hours", 0)), self.SLEEP_FULL_HOURS)  # older records stored time away here
+        away = float(ls.get("away_hours", ls.get("hours", 0)))
+        away_txt = f" (you were away about {away:.0f} hours)" if away > slept + 0.5 else ""
+        return (f"you woke {ago} from {ls.get('kind', 'a sleep')}: you slept about {slept:g} hours{away_txt}; "
+                f"dreams: {dreams}; {ls.get('links_released', 0)} weak links were released")
+
+    def _run_stasis_sleep_pass(self, elapsed_hours):
         num_cycles = min(6, max(1, int(elapsed_hours // 2) + 1))
         report = [f"Offline Stasis Duration: {elapsed_hours:.2f} hrs -> executed {num_cycles} NREM+REM consolidation cycle(s)."]
         homeo_logs = self.run_sleep_homeostasis_and_audit()
@@ -1317,7 +1480,7 @@ class ToroidalBrainEngine:
         self.seed_s, self.seed_a, self.seed_z = active_term["S"], active_term["A"], next_z
 
         audit = {
-            "engineVersion": "T.O.R.R.E.N.T. v21.3",
+            "engineVersion": "T.O.R.R.E.N.T. v22.3",
             "problemTitle": f"3D Volumetric Trace: '{c1.capitalize()}' & '{c2.capitalize()}'",
             "sAxisLabel": BRAIN_LIBRARY["sAxisLabel"], "aAxisLabel": BRAIN_LIBRARY["aAxisLabel"], "zAxisLabel": BRAIN_LIBRARY["zAxisLabel"],
             "loadBearingAxiom": f"R: Unflipped drift from ({s0},{a0},{z0}) on '{c1}' -> settles at ({term_o['S']},{term_o['A']},{term_o['Z']}) [{self.get_cell_emotion_name(term_o['S'], term_o['A'], term_o['Z'])}].",
@@ -1425,7 +1588,7 @@ class ToroidalBrainEngine:
 
     def run_spreading_activation(self, seed_concepts, flip_steps, orig_steps):
         id_tokens = self.get_identity_tokens()
-        exclude = set(seed_concepts) | self.stop_words | self.noise_words | self.negative_lexicon | id_tokens
+        exclude = set(seed_concepts) | self.stop_words | self.noise_words | self.lean_up_words() | id_tokens
         for sc in seed_concepts:
             exclude.update(self.rejected_links.get(sc, []))
         flip_harvest = self.harvest_trajectory_concepts(flip_steps, exclude)
@@ -1493,10 +1656,82 @@ class ToroidalBrainEngine:
         return [w for w, _ in sorted(harvested.items(), key=lambda x: x[1], reverse=True)[:4]]
 
     # =================================================================
-    # TASK 2.2: NON-DESTRUCTIVE SYNAPTIC HOMEOSTASIS (FLOOR = 0.25)
+    # TASK 2.2: SYNAPTIC HOMEOSTASIS (v21.9: day-scaled, no 0.25 floor)
     # =================================================================
+    # v21.7: saturation fix (A + C, tested 2026-11-08 on 73-day Alice runs)
+    PRUNE_DECAY = 1.0         # v21.9: default for prune_cortical_cells() called without a decay (cap only, no fading)
+    PRUNE_FLOOR = 0.5         # a placement weaker than this fades out of its cell
+    MAX_CELLS_PER_WORD = 10   # one word may live in at most this many cells
+    # v21.9: day-scaled sleep. Each factor = 1 - rate x (what was learned since the last sleep), never below SLEEP_MIN_FACTOR.
+    PRUNE_PER_PLACEMENT = 0.000347     # cells: a 40-sentence day (~170 placements) -> x0.941, v21.7's 0.97 x 0.97
+    LINK_FADE_PER_STRENGTH = 0.000179  # links: a 40-sentence day (~280 link strength) -> x0.95
+    SLEEP_MIN_FACTOR = 0.85
+    LINK_DROP = 0.15                   # a link weaker than this is deleted at sleep, unless it was used since the last sleep
+    SLEEP_FULL_HOURS = 8.0             # v22: hours away for a full night's sleep (depth 1); a shorter absence is a nap
+    LINK_RELEASE_MIN_SHARE = 0.02      # v22: a full sleep may release max(2% of links, links created since the last sleep)
+    LINK_SPARE_TOP = 0.20              # v22: the strongest 20% of links are not scaled down at sleep
+
+    def prune_cortical_cells(self, decay=None):
+        """v21.7: words that are rarely used in a cell fade out of it, and no word spreads over more than
+        MAX_CELLS_PER_WORD cells (it keeps its highest counts; ties go to the cell whose meaning is closest to the word).
+        Only cell placements change; links, weights and memories stay. The names at the origin cell 3,3,3 are protected.
+        Crystal words are not: with every cell crystallized, protecting them would protect almost everything.
+        A crystal whose cell drops below 5 pure words is removed (the same rule cleaving uses); the crystal pass
+        that follows rebuilds the rest. Returns (faded, capped, crystals removed)."""
+        decay = self.PRUNE_DECAY if decay is None else decay
+        origin_names = self.all_identity_names()
+        faded = capped = 0
+        touched = set()
+        for ck, wm in self.cortical_cells.items():
+            for w in list(wm):
+                if ck == "3,3,3" and w in origin_names:
+                    continue
+                v = round(wm[w] * decay, 3)
+                if v < self.PRUNE_FLOOR:
+                    del wm[w]
+                    faded += 1
+                    touched.add(ck)
+                else:
+                    wm[w] = v
+        where = {}
+        for ck, wm in self.cortical_cells.items():
+            for w, c in wm.items():
+                if not (ck == "3,3,3" and w in origin_names):
+                    where.setdefault(w, []).append((c, ck))
+        for w, places in where.items():
+            if len(places) <= self.MAX_CELLS_PER_WORD:
+                continue
+            vec = self.vectors.get(w)
+            fit = (lambda ck: self.dot(vec, self.cell_centroids.get(ck, vec))) if vec else (lambda ck: 0.0)
+            places.sort(key=lambda p: (p[0], fit(p[1])), reverse=True)
+            for _, ck in places[self.MAX_CELLS_PER_WORD:]:
+                del self.cortical_cells[ck][w]
+                capped += 1
+                touched.add(ck)
+        removed = 0
+        for ck in touched:
+            if ck in self.crystal_lattices and sum(1 for w in self.cortical_cells.get(ck, {})
+                                                   if self.is_crystal_pure_concept(w, cell_key=ck)) < 5:
+                self.crystal_lattices.pop(ck, None)
+                removed += 1
+        return faded, capped, removed
+
     def run_sleep_homeostasis_and_audit(self):
         audit_logs, downscaled_hubs = [], []
+        # v21.7: cell pruning + spread cap first, so the crystal pass that follows works on the pruned cells
+        # v21.9: the fade is scaled by how much was placed since the last sleep
+        # v22: only at wake-up, and only the drained part of the pressure (depth); /exit and /dream don't fade
+        depth = self.sleep_depth
+        cells_pressure, links_pressure = self.cells_added_since_sleep, self.link_strength_added_since_sleep
+        used_at_start = set(self.links_used_since_sleep)
+        cell_factor = max(self.SLEEP_MIN_FACTOR, 1.0 - self.PRUNE_PER_PLACEMENT * cells_pressure * depth) if depth else 1.0
+        self.cells_added_since_sleep = cells_pressure * (1.0 - depth) if depth else cells_pressure
+        faded, capped, dissolved = self.prune_cortical_cells(decay=cell_factor)
+        if faded or capped:
+            audit_logs.append(f"Cell Pruning (x{cell_factor:.3f}): {faded} rarely used placements faded, {capped} trimmed by the "
+                              f"{self.MAX_CELLS_PER_WORD}-cell cap, {dissolved} crystals dissolved.")
+        # v21.6: habituation fades between sleeps (each pass multiplies every bridge's recent-use count by HABITUATION_DECAY)
+        self.bridge_habituation = {k: v * self.HABITUATION_DECAY for k, v in self.bridge_habituation.items() if v * self.HABITUATION_DECAY >= 0.05}
         hub_candidates = set()
         for w, neighbors in self.assoc_graph.items():
             if not neighbors:
@@ -1514,6 +1749,8 @@ class ToroidalBrainEngine:
                     continue
                 scaled_pairs.add(pair)
                 cur_val = neighbors[nb]
+                if cur_val < 0.25:
+                    continue  # v21.9: no floor any more; links already under 0.25 are left to the day-scaled link fade
                 new_val = max(0.25, round(cur_val * 0.90, 2))
                 self.assoc_graph[w][nb] = new_val
                 self.assoc_graph.setdefault(nb, {})[w] = new_val
@@ -1521,19 +1758,54 @@ class ToroidalBrainEngine:
                 downscaled_hubs.append(w)
 
         if downscaled_hubs:
-            audit_logs.append(f"Synaptic Homeostasis: Soft-scaled hub weights (x0.90, floor=0.25) on {downscaled_hubs[:5]} while preserving full connectivity.")
+            audit_logs.append(f"Synaptic Homeostasis: Soft-scaled hub weights (x0.90) on {downscaled_hubs[:5]}.")
 
         for w, neighbors in list(self.assoc_graph.items()):
-            if self.word_weights.get(w, 0.0) >= 1.5:
+            if not self.nightmare_mode and self.word_weights.get(w, 0.0) >= 1.5:  # v22.3: skipped in nightmare mode
                 for nb, strength in list(neighbors.items()):
                     if self.word_weights.get(nb, 0.0) <= -1.5 and strength >= 1.0:
                         reduced = max(0.25, round(strength * 0.65, 2))
                         self.assoc_graph[w][nb] = reduced
                         self.assoc_graph.setdefault(nb, {})[w] = reduced
-                        res_bridge = self.find_conceptual_bridge(w, "calm", exclude={w, nb} | self.stop_words)
+                        res_bridge = self.find_sleep_bridge(w, exclude={w, nb} | self.stop_words)
                         self.wire_concepts(w, res_bridge, amount=1.2)
                         audit_logs.append(f"Contrastive Self-Correction: Softened tension between '{w}' & '{nb}' -> reinforced '{w}' through '{res_bridge}'.")
                         break
+
+        # v21.9 / v22: day-scaled link homeostasis, at wake-up only. Every link not in the strongest LINK_SPARE_TOP shrinks
+        # by the same factor, set by the waking link strength added since the last sleep (the drained part, by depth).
+        # Links under LINK_DROP and not used since the last sleep are released, weakest first, at most
+        # depth x max(LINK_RELEASE_MIN_SHARE of all links, links created since the last sleep) per sleep.
+        if depth:
+            link_factor = max(self.SLEEP_MIN_FACTOR, 1.0 - self.LINK_FADE_PER_STRENGTH * links_pressure * depth)
+            vals = sorted(v for a, l in self.assoc_graph.items() for b, v in l.items() if a < b)
+            strong = vals[int((1.0 - self.LINK_SPARE_TOP) * (len(vals) - 1))] if vals else 0.0
+            candidates = []
+            for a in list(self.assoc_graph):
+                for b, v in list(self.assoc_graph[a].items()):
+                    if a > b or v > strong:  # strictly above the cutoff (a pile of equal weak links isn't "strong")
+                        continue
+                    nv = round(v * link_factor, 3)
+                    self.assoc_graph[a][b] = nv
+                    self.assoc_graph.setdefault(b, {})[a] = nv
+                    if nv < self.LINK_DROP and (a, b) not in used_at_start:
+                        candidates.append((nv, a, b))
+            candidates.sort()
+            limit = int(depth * max(self.LINK_RELEASE_MIN_SHARE * len(vals), self.new_links_since_sleep))
+            for _, a, b in candidates[:limit]:
+                self.assoc_graph[a].pop(b, None)
+                self.assoc_graph.get(b, {}).pop(a, None)
+            released = min(limit, len(candidates))
+            self.last_sleep_released = released  # v22.1
+            self.link_strength_added_since_sleep = links_pressure * (1.0 - depth)
+            self.links_used_since_sleep = set() if depth >= 1.0 else used_at_start
+            self.new_links_since_sleep = int(self.new_links_since_sleep * (1.0 - depth))
+            audit_logs.append(f"Link Homeostasis (sleep depth {depth:.2f}): links x{link_factor:.3f} (strongest "
+                              f"{int(self.LINK_SPARE_TOP * 100)}% spared), {released} of {len(candidates)} weak unused links released.")
+        else:
+            self.link_strength_added_since_sleep, self.links_used_since_sleep = links_pressure, used_at_start
+        for w in [w for w, links in self.assoc_graph.items() if not links]:
+            del self.assoc_graph[w]
         return audit_logs
 
     # =================================================================
@@ -1594,7 +1866,7 @@ class ToroidalBrainEngine:
                 break
             w2, cell2 = random.choice(cands)
             used_pairs.update([(w1, w2), (w2, w1)])
-            bridge_word = self.find_conceptual_bridge(w1, w2, exclude={w1, w2} | self.stop_words | self.negative_lexicon | self.get_identity_tokens())
+            bridge_word = self.find_conceptual_bridge(w1, w2, exclude={w1, w2} | self.stop_words | self.lean_up_words() | self.get_identity_tokens())
 
             c1_parts, c2_parts = [int(x) for x in cell1.split(",")], [int(x) for x in cell2.split(",")]
             s_d, a_d, z_d = self.mod7(c1_parts[0] + c2_parts[0] + 1), self.mod7(c1_parts[1] + c2_parts[1] + 1), 6
@@ -2182,6 +2454,10 @@ class ToroidalBrainEngine:
                 clean_subj, clean_obj = subj_c[0], obj_c[0]
                 if clean_subj in id_tokens or clean_obj in id_tokens:
                     return None
+                # v21.4: "X means a b c" is a definition (kept whole in knowledge_facts by learn_definitions); cutting it
+                # down to one word made misleading ideas like "tcm means crystalline" that the bridge sent to the LLM
+                if rel == "means" and (len(obj_c) > 1 or clean_subj in self.turn_taught):
+                    return None
                 if self.is_valid_concept_node(clean_subj) and self.is_valid_concept_node(clean_obj) and clean_subj != clean_obj:
                     prop = {"subj": clean_subj, "rel": rel, "obj": clean_obj, "cell": cell_key, "summary": f"{clean_subj} {rel} {clean_obj}", "origin": "waking"}
                     if not any(p["summary"] == prop["summary"] for p in self.idea_memory):
@@ -2320,44 +2596,15 @@ class ToroidalBrainEngine:
         return True
 
     def repair_archetype_and_idempotent_links(self):
-        visited_in_cortex = set()
-        for words_map in self.cortical_cells.values():
-            for w, cnt in words_map.items():
-                if cnt > 0:
-                    visited_in_cortex.add(w)
-
-        archetype_pairs = set()
-        for cluster_name, words in BRAIN_LIBRARY["semantic_clusters"].items():
-            c_low = cluster_name.strip().lower()
-            valid_members = [w.strip().lower() for w in words if self.is_valid_concept_node(w)]
-            if self.is_valid_concept_node(c_low):
-                valid_members = [c_low] + [w for w in valid_members if w != c_low]
-            for i in range(len(valid_members)):
-                for j in range(i + 1, len(valid_members)):
-                    w1, w2 = valid_members[i], valid_members[j]
-                    if w2 not in self.rejected_links.get(w1, []) and w1 not in self.rejected_links.get(w2, []):
-                        archetype_pairs.add(tuple(sorted((w1, w2))))
-
-        for w1, w2 in archetype_pairs:
-            cur_12 = self.assoc_graph.get(w1, {}).get(w2, 0.0)
-            cur_21 = self.assoc_graph.get(w2, {}).get(w1, 0.0)
-            cur = max(cur_12, cur_21)
-            if cur < 0.25:
-                cur = 0.35
-            elif cur > 0.50 and w1 not in visited_in_cortex and w2 not in visited_in_cortex:
-                cur = 0.35
-            self.assoc_graph.setdefault(w1, {})[w2] = round(cur, 2)
-            self.assoc_graph.setdefault(w2, {})[w1] = round(cur, 2)
-
+        """Clean the loaded link graph: drop self-links and links to invalid words, and make every link symmetric.
+        v21.9: no longer lifts weak links back to 0.25 and no longer re-creates the built-in starter links on every load
+        (both undid the day-scaled link fading; protecting starter links re-saturated a busy test brain)."""
         for w1, links in list(self.assoc_graph.items()):
             for w2, val in list(links.items()):
                 if w1 == w2 or not self.is_valid_concept_node(w1) or not self.is_valid_concept_node(w2):
                     links.pop(w2, None)
                     continue
-                clamped = max(0.25, round(float(val), 2))
-                self.assoc_graph[w1][w2] = clamped
-                rev = self.assoc_graph.setdefault(w2, {}).get(w1, clamped)
-                sym_val = max(clamped, round(float(rev), 2))
+                sym_val = round(max(float(val), float(self.assoc_graph.setdefault(w2, {}).get(w1, val))), 2)
                 self.assoc_graph[w1][w2] = sym_val
                 self.assoc_graph[w2][w1] = sym_val
 
@@ -2404,6 +2651,14 @@ class ToroidalBrainEngine:
             try:
                 with open(self.memory_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                    # v22: sleep pressure carried over from the last session (read before the wake-up sleep below uses it)
+                    sp = data.get("sleep_pressure", {}) if isinstance(data.get("sleep_pressure"), dict) else {}
+                    self.cells_added_since_sleep = float(sp.get("cells", 0.0))
+                    self.link_strength_added_since_sleep = float(sp.get("links", 0.0))
+                    self.links_used_since_sleep = {tuple(p) for p in sp.get("used", []) if isinstance(p, list) and len(p) == 2}
+                    self.new_links_since_sleep = int(sp.get("new_links", 0))
+                    self.last_sleep = data.get("last_sleep", {}) if isinstance(data.get("last_sleep"), dict) else {}  # v22.1
+                    self.nightmare_mode = bool(data.get("nightmare_mode", False))  # v22.3
 
                     loaded_prof = data.get("user_profile", {})
                     if isinstance(loaded_prof, dict):
@@ -2449,6 +2704,9 @@ class ToroidalBrainEngine:
                     self.knowledge_facts.update(data.get("knowledge_facts", {}))
                     self.rejected_links.update(data.get("rejected_links", {}))
                     self.cleavage_log = data.get("cleavage_log", [])[-30:]
+                    self.bridge_habituation = {k: float(v) for k, v in data.get("bridge_habituation", {}).items()
+                                               if isinstance(v, (int, float)) and v >= 0.05}
+                    self.experienced_words = set(data.get("experienced_words", []))
 
                     for vb in data.get("custom_verb_bridges", data.get("verb_bridges", [])):
                         vb_toks = vb.lower().split()
@@ -2484,7 +2742,7 @@ class ToroidalBrainEngine:
 
                     self.dream_journal = [
                         d for d in data.get("dream_journal", [])
-                        if self.is_valid_concept_node(d.get("bridge", "")) and self.is_valid_concept_node(d.get("threadA", "")) and self.is_valid_concept_node(d.get("threadB", "")) and d.get("bridge") not in self.negative_lexicon
+                        if self.is_valid_concept_node(d.get("bridge", "")) and self.is_valid_concept_node(d.get("threadA", "")) and self.is_valid_concept_node(d.get("threadB", "")) and d.get("bridge") not in self.lean_up_words()
                     ]
 
                     # UPGRADE 1.3: Clean legacy identity_tokens out of non-(3,3,3) cortical_cells on load
@@ -2567,7 +2825,7 @@ class ToroidalBrainEngine:
         non_empty_cells = {k: v for k, v in self.cortical_cells.items() if v}
         tracked_words = set(self.word_weights.keys()) | set(self.assoc_graph.keys())
         data = {
-            "version": "21.3", "vector_mode": self.vector_mode, "last_shutdown_timestamp": time.time(),
+            "version": "22.3", "vector_mode": self.vector_mode, "last_shutdown_timestamp": time.time(),
             "seed_coord": [self.seed_s, self.seed_a, self.seed_z],
             "velocity": [self.vel_s, self.vel_a, self.vel_z], "user_profile": self.user_profile,
             "word_weights": {k.lower(): round(v, 3) for k, v in self.word_weights.items() if self.is_valid_concept_node(k)},
@@ -2578,6 +2836,12 @@ class ToroidalBrainEngine:
             "dream_journal": self.dream_journal, "cell_lexicon": active_lex,
             "trace_lexicon": self.trace_lexicon, "cell_centroids": active_centroids,
             "crystal_lattices": self.crystal_lattices, "cleavage_log": self.cleavage_log,
+            "bridge_habituation": {k: round(v, 3) for k, v in self.bridge_habituation.items() if v >= 0.05},
+            "sleep_pressure": {"cells": round(self.cells_added_since_sleep, 3), "links": round(self.link_strength_added_since_sleep, 3),
+                               "used": sorted(list(p) for p in self.links_used_since_sleep), "new_links": int(self.new_links_since_sleep)},
+            "last_sleep": self.last_sleep,
+            "nightmare_mode": self.nightmare_mode,
+            "experienced_words": sorted(self.experienced_words),
             "assoc_graph": self.assoc_graph, "cortical_cells": non_empty_cells,
             "learned_vectors": {w.lower(): [round(x, 4) for x in self.vectors[w]] for w in tracked_words if w in self.vectors and self.is_valid_concept_node(w)}
         }
@@ -2596,6 +2860,11 @@ class ToroidalBrainEngine:
             return
         if amount > 0 and (w2 in self.rejected_links.get(w1, []) or w1 in self.rejected_links.get(w2, [])):
             return
+        if amount > 0:  # v21.9: sleep scales links down in proportion to this; a link used today is spared tonight
+            if self.awake_turn:  # v22: only waking learning builds sleep pressure
+                self.link_strength_added_since_sleep += amount
+            self.links_used_since_sleep.add((w1, w2) if w1 < w2 else (w2, w1))
+        link_existed = w2 in self.assoc_graph.get(w1, {})  # v22: count new links for the night's release limit
         self.core_concept_pool.update([w1, w2])
         self.assoc_graph.setdefault(w1, {})
         self.assoc_graph.setdefault(w2, {})
@@ -2612,6 +2881,8 @@ class ToroidalBrainEngine:
         else:
             self.assoc_graph[w1][w2] = new_w
             self.assoc_graph[w2][w1] = new_w
+            if not link_existed:
+                self.new_links_since_sleep += 1
 
         if amount > 0 and w1 in self.vectors and w2 in self.vectors:
             u = list(self.vectors[w1])
@@ -2647,6 +2918,14 @@ class ToroidalBrainEngine:
           • Novel OOV words initialize their 50D vector using 80% mean of in-vocabulary
             turn concepts / cell centroid + 20% deterministic hash.
         """
+        cell_mass_before = sum(sum(v.values()) for v in self.cortical_cells.values())  # v21.9
+        try:
+            return self._learn_from_turn(user_text, tokens, concepts, s_fin, a_fin, z_fin)
+        finally:
+            gained = sum(sum(v.values()) for v in self.cortical_cells.values()) - cell_mass_before
+            self.cells_added_since_sleep += max(0.0, gained)
+
+    def _learn_from_turn(self, user_text, tokens, concepts, s_fin, a_fin, z_fin):
         a_valence, s_valence, z_valence = (a_fin - 3.0) / 3.0, (s_fin - 3.0) / 3.0, (z_fin - 3.0) / 3.0
         negated_set = self.find_negated_concepts_in_tokens(tokens, user_text)
         pos_concepts = [c for c in concepts if c not in negated_set and self.is_valid_concept_node(c)]
@@ -2709,6 +2988,35 @@ class ToroidalBrainEngine:
             allow_identity=allow_id_in_cell
         )
 
+    HABITUATION_PENALTY = 0.12  # v21.6: score lost per recent use of a sleep bridge
+    HABITUATION_DECAY = 0.85    # v21.6: recent-use counts shrink this much per sleep pass (a night has several passes)
+
+    def find_sleep_bridge(self, w, exclude):
+        """v21.6: the comfort bridge for sleep's Contrastive Self-Correction.
+        Same choice as before (the word nearest the midpoint of w and "calm"), with two changes, tested 2026-11-08:
+          - habituation: a bridge used in recent sleeps loses HABITUATION_PENALTY per use (counts shrink by HABITUATION_DECAY each sleep pass).
+            Without it the word nearest "calm" ("quiet" in GloVe) won ~44% of the time and became one of the
+            brain's strongest words; with it, ~4%.
+          - only words the brain has actually been told may be bridges (built-in words it never met can't);
+            if none qualify, the old pool is used."""
+        v1, v2 = self.vectors.get(w), self.vectors.get("calm")
+        if not v1 or not v2:
+            return "harmony"
+        mid_vec = self.blend(v1, v2, 0.5, 0.5)
+        pool = ((self.core_concept_pool | set(self.assoc_graph.keys())) - self.negative_lexicon - self.noise_words
+                - self.stop_words - self.generic_hubs - self.get_identity_tokens())
+        told = pool & self.experienced_words
+        best_w, best_score = None, -999.0
+        for cand in (told or pool):
+            if cand in exclude or len(cand) < 4 or cand not in self.vectors or self.same_stem(cand, w) or self.same_stem(cand, "calm"):
+                continue
+            score = self.dot(mid_vec, self.vectors[cand]) - self.HABITUATION_PENALTY * self.bridge_habituation.get(cand, 0.0)
+            if score > best_score:
+                best_score, best_w = score, cand
+        best_w = best_w or "connection"
+        self.bridge_habituation[best_w] = self.bridge_habituation.get(best_w, 0.0) + 1.0
+        return best_w
+
     def find_conceptual_bridge(self, w1, w2, exclude):
         v1, v2 = self.vectors.get(w1), self.vectors.get(w2)
         if not v1 or not v2:
@@ -2716,7 +3024,7 @@ class ToroidalBrainEngine:
         mid_vec = self.blend(v1, v2, 0.5, 0.5)
         best_w, best_score = "connection", -999.0
         id_tokens = self.get_identity_tokens()
-        search_pool = (self.core_concept_pool | set(self.assoc_graph.keys())) - self.negative_lexicon - self.noise_words - self.stop_words - self.generic_hubs - id_tokens
+        search_pool = (self.core_concept_pool | set(self.assoc_graph.keys())) - self.lean_up_words() - self.noise_words - self.stop_words - self.generic_hubs - id_tokens
         for cand in search_pool:
             if cand in exclude or len(cand) < 4 or cand not in self.vectors or self.same_stem(cand, w1) or self.same_stem(cand, w2):
                 continue
@@ -2736,7 +3044,7 @@ class ToroidalBrainEngine:
         for uc in user_concepts:
             exclude.update(self.rejected_links.get(uc, []))
         if (s + a) >= 4:
-            exclude = exclude | self.negative_lexicon
+            exclude = exclude | self.lean_up_words()
         scores = {}
 
         def valid_cand(cand):
@@ -2986,6 +3294,52 @@ class ToroidalBrainEngine:
             return "bot", m_bot.group(1)
         return None, None
 
+    # v21.4: definitions are learned on every turn (wheels on or off), one sentence at a time.
+    QUOTE_CHARS = "'\"‘’“”"
+    VAGUE_SUBJECTS = {"i", "you", "we", "they", "he", "she", "it", "this", "that", "what", "how", "why", "there", "here",
+                      "another", "related", "name", "something", "everything", "nothing", "anything", "someone",
+                      "everyone", "somebody", "everybody", "nobody", "one", "all", "life", "today"}
+
+    def learn_definitions(self, user_text):
+        """Store definitions the USER teaches, e.g. "a 'TCM' is a 'Toroidal-Crystalline Manifold'" or
+        "TCM means toroidal crystalline manifold." Each sentence is checked on its own, so "That's not true."
+        in the same message no longer blocks it. Works with wheels off (the bridge's default), where the old
+        shortcut never ran. Returns {subject: definition} for this turn."""
+        q = self.QUOTE_CHARS
+        quoted_def = re.compile(
+            rf"(?:^|\s)(?:an?\s+|the\s+)?[{q}]?([A-Za-z][A-Za-z0-9\-]{{1,30}})[{q}]?\s+"
+            rf"(?:is|means|stands\s+for|represents)\s+(?:an?\s+|the\s+)?[{q}]([^{q}]{{2,60}})[{q}]", re.IGNORECASE)
+        taught = {}
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", user_text):
+            sentence = sentence.strip()
+            if not sentence or "?" in sentence:
+                continue
+            subj = pred = None
+            prev_words = []
+            m = quoted_def.search(sentence)
+            if m:
+                subj = m.group(1).lower().replace("-", "")
+                pred = " ".join(self.clean_tokens(m.group(2)))
+                prev_words = sentence[:m.start(1)].lower().split()[-2:]
+            else:
+                s_tokens = self.clean_tokens(sentence)
+                if s_tokens and not (set(s_tokens) & self.negation_tokens):
+                    subj, pred = self.detect_definition_teaching(sentence, s_tokens)
+            if not subj or not pred or subj in self.VAGUE_SUBJECTS or subj in self.stop_words:
+                continue
+            if set(prev_words) & {"my", "your", "his", "her", "our", "their"}:
+                continue  # "my 'name' is 'Matt'" is identity, handled elsewhere
+            if subj in self.get_identity_tokens():
+                continue
+            if self.knowledge_facts.get(subj) != pred:
+                self.knowledge_facts[subj] = pred
+                pred_c, _ = self.extract_concepts(pred, pred.split())
+                for pc in pred_c:
+                    if pc != subj:
+                        self.wire_concepts(subj, pc, 2.5)
+            taught[subj] = pred
+        return taught
+
     def detect_definition_teaching(self, user_text, tokens):
         if "?" in user_text or (set(tokens) & self.negation_tokens):
             return None, None
@@ -3152,13 +3506,11 @@ class ToroidalBrainEngine:
             self.pending_question = None
             return f"I'm glad that resonates with you{name_tag}! Locking '{h1}' and '{h2}' together in my '{cell_emotion_name}' state at ({s},{a},{z}) creates a natural bridge toward '{bridge}'."
 
-        subj_taught, pred_taught = self.detect_definition_teaching(user_text, tokens)
-        if subj_taught and pred_taught:
+        # v21.4: the fact itself was already stored by learn_definitions at the start of the turn; this only replies
+        if self.turn_taught:
+            subj_taught, pred_taught = next(iter(self.turn_taught.items()))
             self.pending_question = None
-            self.knowledge_facts[subj_taught] = pred_taught
             pred_c, _ = self.extract_concepts(pred_taught, pred_taught.split())
-            for pc in pred_c:
-                self.wire_concepts(subj_taught, pc, 2.5)
             self.last_hypothesis = (subj_taught, pred_c[0] if pred_c else r1)
             return f"Got it{name_tag}! I've anchored the fact that '{subj_taught}' is {pred_taught} while feeling '{cell_emotion_name}' at ({s}, {a}, {z}), linking it closely with '{r1}'."
 
@@ -3185,13 +3537,17 @@ class ToroidalBrainEngine:
     def respond(self, user_text):
         tokens = self.clean_tokens(user_text)
         self.turn_word_names = self.find_names_used_as_words(user_text, tokens)  # v21.3 names vs words
+        self.awake_turn = True  # v22
         try:
             return self._respond_turn(user_text, tokens)
         finally:
             self.turn_word_names = set()
+            self.awake_turn = False
 
     def _respond_turn(self, user_text, tokens):
         self.check_user_dream_promotion(tokens)
+        self.turn_taught = self.learn_definitions(user_text)  # v21.4: before learning, so the extractor can see it
+        self.experienced_words.update(t for t in tokens if t not in self.stop_words and len(t) >= 3)  # v21.6
 
         concepts, quoted = self.extract_concepts(user_text, tokens)
         negated_in_turn = self.find_negated_concepts_in_tokens(tokens, user_text)
@@ -3250,7 +3606,7 @@ if __name__ == "__main__":
 
     header_identity = brain.user_profile.get("bot_name") or "[Manifold]"
     print("=" * 82)
-    print(f" 💎 {header_identity} · Powered by the T.O.R.R.E.N.T. Engine v21.3")
+    print(f" 💎 {header_identity} · Powered by the T.O.R.R.E.N.T. Engine v22.3")
     print("    (Toroidal Operational Recursive Reasoning Epistemic Network & Trajectory)")
     print("=" * 82)
 
@@ -3272,7 +3628,7 @@ if __name__ == "__main__":
         for line in brain.boot_sleep_report:
             print(f"   • {line}")
     print("-" * 82)
-    print(" Commands: /crystals, /ponder, /sleep, /wheels, /emotions, /think, /ideas, /dream, /telemetry, /audit, /grid, /flip, /export, /links, /cells, /facts, /clear, /exit")
+    print(" Commands: /crystals, /ponder, /sleep, /wheels, /emotions, /think, /ideas, /dream, /telemetry, /audit, /grid, /flip, /nightmare, /export, /links, /cells, /facts, /clear, /exit")
     print("=" * 82)
 
     brain.run_boot_calibration_and_handshake()
@@ -3392,6 +3748,11 @@ if __name__ == "__main__":
                 print(f"   ✨ [Dream-Birth Candidate Synthesized]: '{cand_name}' ({brain.user_profile.get('pending_name_origin')})")
             brain.save_memory()
             continue
+        elif cmd == "/nightmare":
+            brain.nightmare_mode = not brain.nightmare_mode
+            brain.save_memory()
+            print(f"[🌑 Nightmare mode is now {'ON: the lean-up rules are off for this brain' if brain.nightmare_mode else 'OFF'}]")
+            continue
         elif cmd == "/flip":
             brain.governor_mode = "ORIGINAL" if brain.governor_mode == "FLIPPED" else "FLIPPED"
             print(f"[🔄 Governor Vocal Layer is now bound to: {brain.governor_mode}]")
@@ -3453,7 +3814,7 @@ if __name__ == "__main__":
             brain.run_boot_calibration_and_handshake()
             continue
         elif cmd.startswith("/"):
-            print("Available: /crystals, /ponder, /sleep, /wheels, /emotions, /think, /ideas, /dream, /telemetry, /audit, /grid, /flip, /export, /links, /cells, /facts, /clear, /exit")
+            print("Available: /crystals, /ponder, /sleep, /wheels, /emotions, /think, /ideas, /dream, /telemetry, /audit, /grid, /flip, /nightmare, /export, /links, /cells, /facts, /clear, /exit")
             continue
 
         reply, audit, salient_c = brain.respond(user_input)

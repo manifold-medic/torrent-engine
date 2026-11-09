@@ -1,9 +1,10 @@
-import json, os, re, shutil, socket, subprocess, sys, tempfile, time, urllib.request, urllib.error, wave
+import copy, json, os, random, re, shutil, socket, subprocess, sys, tempfile, time, urllib.request, urllib.error, wave
 from torrentengine import ToroidalBrainEngine, BRAIN_LIBRARY
 
 # Speed / connection settings (can be changed with environment variables, e.g. set TORRENT_LLM_TIMEOUT=400):
 LLM_TIMEOUT_SEC = float(os.environ.get("TORRENT_LLM_TIMEOUT", "240"))  # longest wait for the model to START answering (includes loading it)
-LLM_KEEP_ALIVE = os.environ.get("TORRENT_KEEP_ALIVE", "30m")           # Ollama keeps the model in memory this long between turns
+LLM_KEEP_ALIVE = os.environ.get("TORRENT_KEEP_ALIVE", "30m")
+LLM_SEED = os.environ.get("TORRENT_SEED", "").strip()  # a number makes the model's randomness repeatable (for tests)           # Ollama keeps the model in memory this long between turns
 
 
 def cut_at_word(text, limit, keep="start"):
@@ -61,6 +62,9 @@ def strip_performative_directions(text: str) -> str:
     cleaned = re.sub(r"^\s*\([^)]{4,140}\)\s*", "", text)
     cleaned = re.sub(r"^\s*\*[^*]{4,140}\*\s*", "", cleaned)
     cleaned = re.sub(r"\s*\((?:[^)]*(?:manifold|torus|coordinate|contraction|shift|axis|lattice)[^)]*)\)", "", cleaned, flags=re.IGNORECASE)
+    # a whole line that is nothing but a parenthetical, e.g. "(A slight adjustment of processing priority ...)"
+    cleaned = re.sub(r"(?m)^[ \t]*(?:\([^\n()]{4,200}\)|\*[^\n*]{4,200}\*)[ \t]*$\n?", "", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip() or text.strip()
 
 
@@ -205,7 +209,7 @@ class TorrentLLMMiddleware:
         self.is_mobile = is_mobile
         self.voice_mode = self.resolve_voice_mode(voice_mode)
         self.temperature = 0.65
-        self.max_tokens = 160 if is_mobile else 600
+        self.max_tokens = int(os.environ.get("TORRENT_MAX_TOKENS", "160" if is_mobile else "600"))  # longest reply, in tokens
         self.summary_trigger_len = 6 if is_mobile else 10
         self.keep_raw_len = 2 if is_mobile else 4
 
@@ -238,6 +242,14 @@ class TorrentLLMMiddleware:
         # A model chosen with TORRENT_MODEL or /model wins over whatever Ollama has loaded and over the "gemma" default
         self.preferred_model = model_name or str(self.brain.knowledge_facts.get("_preferred_model", "")).strip()
         self.force_merged_role = False  # set if the server rejects a separate system message (400/422)
+        # Callosum (2026-11-08): the brain talks to the voice through more than prompt text. Both parts can be switched off
+        # with /callosum for the control test. "memory": strength labels on memory lines + careful learning from replies.
+        # "tone": the brain's movement sets the model's temperature and a target reply length.
+        self.callosum = {"memory": True, "tone": True}
+        self.memory_strength, self.turn_tone, self.last_tone = 0.0, None, None
+        self.last_prompt_text, self.last_finish_reason, self.last_ground_text = "", "", ""
+        self.pinned_notes, self.last_used_notes = [], []      # notes chosen with /recall for the next turn; notes used last turn
+        self.undo_snapshot, self.undo_ready = None, False      # /back
         self.connected = False
         self.last_used_fallback = False
         self._warned_unreachable = False
@@ -245,6 +257,169 @@ class TorrentLLMMiddleware:
             if cand and self.probe_and_connect(cand, verbose=False):
                 self.connected = True
                 break
+
+    # =========================================================================
+    # NOTES FILE: things the user has confirmed, kept next to the brain file
+    # (brains/brain_gyre.json -> brains/brain_gyre.notes.md). Only the user writes notes, never the LLM, so a
+    # model's wrong guess can't become one. The file is plain text and can be edited in Notepad; it is re-read
+    # every turn. Matching notes are added to the prompt automatically (at most NOTES_PER_TURN) and outrank
+    # everything else the model is shown.
+    # =========================================================================
+    NOTES_PER_TURN = 2
+
+    def notes_path(self) -> str:
+        base, _ = os.path.splitext(self.brain.memory_file)
+        return base + ".notes.md"
+
+    def load_notes(self) -> list:
+        """Each note: {'key': 'TCM' or '', 'text': ..., 'meta': ..., 'line': raw}. Lines that aren't '- ' items are kept as-is."""
+        notes = []
+        path = self.notes_path()
+        if not os.path.exists(path):
+            return notes
+        with open(path, "r", encoding="utf-8") as f:
+            for raw in f:
+                line = raw.strip()
+                if not line.startswith(("- ", "* ")):
+                    continue
+                body = line[2:].strip()
+                meta = ""
+                m = re.search(r"\s*\[([^\[\]]*)\]\s*$", body)
+                if m:
+                    meta, body = m.group(1), body[:m.start()].rstrip()
+                key, text = "", body
+                if ":" in body:
+                    k, t = body.split(":", 1)
+                    if 0 < len(k.strip()) <= 40 and t.strip():
+                        key, text = k.strip().strip("*").strip(), t.strip()
+                notes.append({"key": key, "text": text, "meta": meta, "line": line})
+        return notes
+
+    def write_notes(self, notes: list):
+        path = self.notes_path()
+        bot = self.brain.user_profile.get("bot_name") or "this brain"
+        user = (self.brain.user_profile.get("user_name") or "the user").capitalize()
+        header = (f"# Notes for {bot}\n\n"
+                  f"Things {user} has confirmed. One note per line, starting with '- '.\n"
+                  f"Use 'Key: text' so the note comes up automatically when the key is mentioned.\n"
+                  f"You can edit this file in any text editor; the bridge re-reads it every turn.\n\n")
+        lines = []
+        for n in notes:
+            body = f"{n['key']}: {n['text']}" if n["key"] else n["text"]
+            lines.append(f"- {body}" + (f"  [{n['meta']}]" if n["meta"] else ""))
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(header + "\n".join(lines) + ("\n" if lines else ""))
+        os.replace(tmp, path)
+
+    def add_note(self, raw: str) -> dict:
+        key, text = "", raw.strip()
+        if ":" in text:
+            k, t = text.split(":", 1)
+            if 0 < len(k.strip()) <= 40 and t.strip():
+                key, text = k.strip(), t.strip()
+        meta = f"cell {self.brain.seed_s},{self.brain.seed_a},{self.brain.seed_z} · {time.strftime('%Y-%m-%d')}"
+        notes = [n for n in self.load_notes() if not (key and n["key"].lower() == key.lower())]  # same key = replace
+        note = {"key": key, "text": text, "meta": meta, "line": ""}
+        notes.append(note)
+        self.write_notes(notes)
+        # Teach the brain too: a one-word key becomes a definition fact and is wired to the note's words
+        if key and re.fullmatch(r"[A-Za-z][A-Za-z0-9\-]{1,30}", key):
+            definition = re.split(r"[,;.(]", text, maxsplit=1)[0].strip()[:60]  # the brain gets just the definition; the note keeps the rest
+            if definition:
+                self.brain.learn_definitions(f"'{key}' means '{definition}'.")
+        return note
+
+    def note_words(self, note: dict) -> set:
+        return {w for w in self.brain.clean_tokens(note["key"] or note["text"]) if w not in self.brain.stop_words}
+
+    @staticmethod
+    def with_singulars(tokens) -> set:
+        """The words plus simple singulars ("tcms" -> "tcm", "boxes" -> "box"), so a note or fact keyed "TCM" is found."""
+        out = set(tokens)
+        for t in tokens:
+            if len(t) >= 4 and t.endswith("es"):
+                out.add(t[:-2])
+            if len(t) >= 4 and t.endswith("s") and not t.endswith("ss"):
+                out.add(t[:-1])
+        return out
+
+    def match_notes(self, user_text: str, notes: list) -> list:
+        """A keyed note matches when all its key words are in the message; a note without a key needs 2 of its words."""
+        tokens = self.with_singulars(self.brain.clean_tokens(user_text))
+        hits = []
+        for n in notes:
+            words = self.note_words(n)
+            if not words:
+                continue
+            if n["key"]:
+                if words <= tokens:
+                    hits.append(n)
+            elif len({w for w in words if len(w) >= 3} & tokens) >= 2:
+                hits.append(n)
+        return hits
+
+    def notes_for_prompt(self, user_text: str) -> list:
+        notes = self.load_notes()
+        chosen = list(self.pinned_notes)  # notes picked with /recall always go, on top of the automatic ones
+        seen = {(c["key"], c["text"]) for c in chosen}
+        added = 0
+        for n in self.match_notes(user_text, notes):
+            if added >= self.NOTES_PER_TURN:
+                break
+            if (n["key"], n["text"]) not in seen:
+                chosen.append(n)
+                seen.add((n["key"], n["text"]))
+                added += 1
+        self.pinned_notes = []
+        self.last_used_notes = chosen
+        return chosen
+
+    # =========================================================================
+    # /back: one-step undo. Before every turn the brain and this bridge's memory are snapshotted in RAM;
+    # /back restores them, as if the last message was never sent, and logs the undo in the brain file.
+    # =========================================================================
+    STATIC_BRAIN_ATTRS = {"raw_glove", "word_rank"}         # never change after loading: shared, not copied
+    SHALLOW_BRAIN_ATTRS = {"vectors", "factory_vectors"}    # entries are replaced, never edited in place
+
+    def take_snapshot(self, user_text: str):
+        state = {}
+        for k, v in self.brain.__dict__.items():
+            if k in self.STATIC_BRAIN_ATTRS:
+                continue
+            state[k] = dict(v) if k in self.SHALLOW_BRAIN_ATTRS else copy.deepcopy(v)
+        self.undo_snapshot = {
+            "brain": state,
+            "random": random.getstate(),
+            "chat_history": copy.deepcopy(self.chat_history),
+            "episodic_archive": copy.deepcopy(self.episodic_archive),
+            "running_summary": self.running_summary,
+            "text": user_text,
+        }
+        self.undo_ready = False  # becomes True once the turn has finished
+
+    def undo_last_turn(self) -> str:
+        snap = self.undo_snapshot
+        if not snap or not self.undo_ready:
+            return ""
+        self.brain.__dict__.update(snap["brain"])
+        random.setstate(snap["random"])
+        self.chat_history = snap["chat_history"]
+        self.episodic_archive = snap["episodic_archive"]
+        self.running_summary = snap["running_summary"]
+        log = []
+        try:
+            log = json.loads(self.brain.knowledge_facts.get("_undo_log_json", "[]"))
+        except ValueError:
+            pass
+        log.append({"time": time.strftime("%Y-%m-%d %H:%M"), "undone": cut_at_word(snap["text"], 80)})
+        self.brain.knowledge_facts["_undo_log_json"] = json.dumps(log[-50:])
+        self.save_persistent_chat_memory()
+        self.brain.save_memory()
+        if self.brain.last_audit is not None:
+            self.brain.export_trace_file("latest_trace.json")
+        self.undo_snapshot, self.undo_ready = None, False
+        return snap["text"]
 
     def load_persistent_chat_memory(self):
         self.running_summary = str(self.brain.knowledge_facts.get("_running_summary", "")).strip()
@@ -312,7 +487,9 @@ class TorrentLLMMiddleware:
             try:
                 compressed = self.stream_chat([{"role": "user", "content": sum_prompt}], max_tokens=120, temperature=0.3)
                 if compressed:
-                    return cut_at_word(compressed, 420)
+                    short = cut_at_word(compressed, 420)
+                    # end on a full sentence, not mid-thought ("...computational attempts to")
+                    return self.trim_to_sentence(short) if short != " ".join(compressed.split()) else short
             except Exception:
                 pass
 
@@ -328,6 +505,7 @@ class TorrentLLMMiddleware:
     def retrieve_relevant_episodes(self, user_text: str, salient_concepts: list, top_k: int = 3) -> list:
         query_vec = self.brain.phrase_to_vector(user_text)
         seed_set = set(salient_concepts[:5])
+        fact_seeds = self.with_singulars(seed_set)  # "tcms" also finds the fact for "tcm"
 
         hop1_weights = {}
         for c in seed_set:
@@ -336,12 +514,19 @@ class TorrentLLMMiddleware:
                     hop1_weights[nb] = max(hop1_weights.get(nb, 0.0), float(wt))
 
         candidates, seen = [], set()
+        label = self.callosum["memory"]
+        strength_of = {}  # text -> strength (4 certain note, 3 strong fact, 2 firm/familiar, 1 faint, 0.5 dream)
 
+        noted = {w for n in self.last_used_notes for w in self.note_words(n)}
         for k, v in self.brain.knowledge_facts.items():
-            if k.startswith("_"):
+            if k.startswith("_") or k in noted:
                 continue
-            fact_str = f"Fact: '{k}' is {v}"
-            score = (2.5 if k in seed_set else (0.9 * min(1.5, hop1_weights[k]) if k in hop1_weights else 0.0))
+            # Facts come from what the user taught (never from the LLM), so a matching fact outranks old episodes,
+            # which can hold a model's wrong guess (e.g. an earlier model's made-up meaning of an acronym)
+            teacher = str(self.brain.user_profile.get("user_name", "")).strip().capitalize() or "the user"
+            fact_str = f"Fact taught by {teacher}{' (strong)' if label else ''}: '{k}' means {v}"
+            strength_of[fact_str] = 3.0
+            score = (6.0 if k in fact_seeds else (0.9 * min(1.5, hop1_weights[k]) if k in hop1_weights else 0.0))
             score += max(0.0, self.brain.cosine_similarity(query_vec, self.brain.phrase_to_vector(f"{k} {v}"))) * 1.1
             if score >= 0.55 and fact_str not in seen:
                 seen.add(fact_str)
@@ -361,7 +546,10 @@ class TorrentLLMMiddleware:
             if origin == "waking":
                 score += 0.2
             tag = "Waking Memory" if origin == "waking" else "Dream Synthesis"
+            if label:
+                tag += " · firm" if origin == "waking" else " · dream, not a real event"
             fmt = f"[{tag} @ ({cell})]: {summary}"
+            strength_of[fmt] = 2.0 if origin == "waking" else 0.5
             if score >= 0.65 and fmt not in seen:
                 seen.add(fmt)
                 candidates.append((score, fmt))
@@ -377,10 +565,23 @@ class TorrentLLMMiddleware:
             score = direct + hop + max(0.0, self.brain.cosine_similarity(query_vec, ep_vec)) * 1.25
             if score >= 0.75 and ep_sum not in seen:
                 seen.add(ep_sum)
-                candidates.append((score, f"[Past Episode]: {ep_sum}"))
+                familiar = int(ep.get("recalled", 0)) >= 3
+                ep_text = f"[Past Episode{(' · familiar' if familiar else ' · faint') if label else ''}]: {ep_sum}"
+                strength_of[ep_text] = 2.0 if familiar else 1.0
+                candidates.append((score, ep_text))
+                ep_index_of = getattr(self, "_ep_index_of", {})
+                ep_index_of[ep_text] = ep
+                self._ep_index_of = ep_index_of
 
         candidates.sort(key=lambda x: x[0], reverse=True)
         self.last_retrieved_episodes = [text for _, text in candidates[:top_k]]
+        # how strong is the best memory this turn (notes are checked in build_state_injection)
+        self.memory_strength = max([strength_of.get(t, 1.0) for t in self.last_retrieved_episodes] or [0.0])
+        for t in self.last_retrieved_episodes:  # count recalls, so often-recalled episodes become "familiar"
+            ep = getattr(self, "_ep_index_of", {}).get(t)
+            if ep is not None:
+                ep["recalled"] = int(ep.get("recalled", 0)) + 1
+        self._ep_index_of = {}
         return self.last_retrieved_episodes
 
     def resolve_voice_mode(self, requested_mode: str = None) -> str:
@@ -529,7 +730,27 @@ class TorrentLLMMiddleware:
         weights_str = ", ".join(weight_anchors) if weight_anchors else "curiosity and equilibrium"
 
         top_k_ep = 2 if self.is_mobile else 3
+        used_notes = self.notes_for_prompt(user_text)
+        notes_line = ""
+        if used_notes:
+            teacher = (self.brain.user_profile.get("user_name") or "the user").capitalize()
+            items = " | ".join((f"{n['key']}: {n['text']}" if n["key"] else n["text"]) for n in used_notes)
+            notes_line = f"\nConfirmed notes from {teacher} (true; use these over anything else below): {items}"
         retrieved_episodes = self.retrieve_relevant_episodes(user_text, salient_concepts, top_k=top_k_ep)
+        if used_notes:
+            self.memory_strength = 4.0
+        sleep_line, pressure_line = self.sleep_lines(user_text)
+        if sleep_line and self.brain.describe_last_sleep():
+            self.memory_strength = max(self.memory_strength, 3.0)  # a real sleep record is a true memory ("no record" isn't)
+        self.turn_tone = self.tone_settings(audit, user_text)
+        memory_check_line = ""
+        if self.callosum["memory"] and self.turn_tone["unsure"]:
+            # Goes LAST in the prompt (small models follow the final line best). The 2026-11-08 Gyre test showed the
+            # softer wording, placed mid-prompt, was half-obeyed ("my memory is fragmented") and then ignored.
+            memory_check_line = ("\nMemory check: nothing in your memory covers this. If the question is about a past event, "
+                                 "say plainly in your first sentence that you don't remember it, and do not make up events, "
+                                 "logs, data or details to fill the gap.")
+        length_hint = f" Keep it to about {self.turn_tone['sentences']} sentences." if self.callosum["tone"] else ""
 
         # ---------------------------------------------------------------------
         # ABSOLUTE WHEELS-OFF MODE (Default: Raw Spatial Telemetry, Zero Templates)
@@ -537,15 +758,24 @@ class TorrentLLMMiddleware:
         if not self.brain.training_wheels:
             summary_line = f"\nRunning Conversation Context: {self.running_summary}" if self.running_summary else ""
             episodes_line = f"\nRelevant Past Memory Anchors: {' | '.join(retrieved_episodes)}" if retrieved_episodes else ""
-            return (
+            if retrieved_episodes and self.callosum["memory"]:
+                episodes_line += " (strength: strong > firm/familiar > faint > dream)"
+            self.last_prompt_text = (
                 f"You are {bot_name}, speaking with {user_name}.\n"
                 f"Current Manifold Coordinate: ({s},{a},{z}) [S={s}: {s_desc}; A={a}: {a_desc}; Z={z}: {z_desc}].\n"
                 f"Active semantic weights lean toward: {weights_str}.\n"
                 f"Underlying conceptual link: {prop} (path: {a_star_path})."
-                f"{summary_line}{episodes_line}\n"
+                f"{notes_line}{summary_line}{episodes_line}{sleep_line}{pressure_line}\n"
                 f"Directive: Let the coordinate ({s},{a},{z}) and active semantic weights ({weights_str}) shape your tone and perspective naturally. "
-                f"Respond natively without performative stage directions, parenthetical mood actions, or internal engine debug strings."
+                f"Respond natively without performative stage directions, parenthetical mood actions, or internal engine debug strings.{length_hint}"
+                f"{memory_check_line}"
             )
+            # What counts as "grounded" for careful learning: the user's words and what the BRAIN supplied (notes, memory
+            # lines, its weights and path). Not the running summary (the LLM wrote it, so it would launder invented words)
+            # and not the fixed template text (axis descriptions, directive), which would ground words like "reflection" every turn.
+            self.last_ground_text = " ".join([user_text, notes_line, " ".join(retrieved_episodes), weights_str, prop, a_star_path,
+                                              sleep_line, pressure_line])
+            return self.last_prompt_text
 
         # ---------------------------------------------------------------------
         # TRAINING WHEELS ON (Explicit Scaffolding & Debug Inspection Mode)
@@ -558,15 +788,22 @@ class TorrentLLMMiddleware:
         gamma_w = facets.get("Facet_Gamma", {}).get("words", [])[:4]
         omega_w = facets.get("Facet_Omega", {}).get("words", [])[:2]
 
-        return (
+        self.last_prompt_text = (
             f"You are {bot_name} speaking with {user_name} in explicit scaffolding mode.\n"
             f"• Active 3D Coordinate: ({s}, {a}, {z}) | Mood: '{cell_mood}' | Shift: '{trace_mood}'\n"
             f"• Axes: S={s} ({s_desc}) | A={a} ({a_desc}) | Z={z} ({z_desc})\n"
             f"• Crystal Facets: Alpha={alpha_w}, Gamma={gamma_w}, Omega={omega_w}\n"
             f"• 3D A* Path: {a_star_path} | Pondered Proposition: [{prop}]\n"
             f"• Engine Sub-Vocal Draft: \"{pre_reply}\"\n"
-            f"Directive: Reference your 3D coordinate ({s},{a},{z}), mood '{cell_mood}', and proposition [{prop}] explicitly."
+            + (f"• {notes_line.strip()}\n" if notes_line else "")
+            + (f"• {sleep_line.strip()}\n" if sleep_line else "")
+            + (f"• {pressure_line.strip()}\n" if pressure_line else "")
+            + f"Directive: Reference your 3D coordinate ({s},{a},{z}), mood '{cell_mood}', and proposition [{prop}] explicitly.{length_hint}"
+            + memory_check_line
         )
+        self.last_ground_text = " ".join([user_text, notes_line, " ".join(retrieved_episodes), weights_str, prop,
+                                          a_star_path, pre_reply, " ".join(alpha_w + gamma_w + omega_w), sleep_line, pressure_line])
+        return self.last_prompt_text
 
     def _parse_response_body(self, raw_text: str) -> str:
         raw_text = raw_text.strip()
@@ -611,8 +848,13 @@ class TorrentLLMMiddleware:
         if self.backend == "ollama":
             payload = {"model": self.model_name, "messages": messages, "stream": True, "keep_alive": LLM_KEEP_ALIVE,
                        "options": {"temperature": temperature, "num_predict": max_tokens}}
+            if LLM_SEED.lstrip("-").isdigit():
+                payload["options"]["seed"] = int(LLM_SEED)
         else:
             payload = {"model": self.model_name, "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": True}
+            if LLM_SEED.lstrip("-").isdigit():
+                payload["seed"] = int(LLM_SEED)
+        self.last_finish_reason = ""
         req = urllib.request.Request(self.endpoint, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
         pieces, raw_lines, shown = [], [], 0
         if show_progress:
@@ -631,6 +873,8 @@ class TorrentLLMMiddleware:
                         try:
                             ch = json.loads(data).get("choices", [{}])[0]
                             piece = ch.get("delta", {}).get("content") or ch.get("message", {}).get("content") or ""
+                            if ch.get("finish_reason"):
+                                self.last_finish_reason = str(ch.get("finish_reason"))
                         except (ValueError, AttributeError, IndexError):
                             continue
                     else:
@@ -641,6 +885,7 @@ class TorrentLLMMiddleware:
                         piece = (obj.get("message") or {}).get("content") or obj.get("response") or ""
                         if obj.get("done"):
                             pieces.append(piece)
+                            self.last_finish_reason = str(obj.get("done_reason") or "")
                             break
                     pieces.append(piece)
                     if show_progress and len(pieces) - shown >= 8:
@@ -653,6 +898,72 @@ class TorrentLLMMiddleware:
         if not text and raw_lines:  # a server that ignored stream=True and sent one ordinary answer
             text = self._parse_response_body("\n".join(raw_lines))
         return text
+
+    # =========================================================================
+    # CALLOSUM step 2: TONE. The brain's movement this turn sets HOW the voice speaks, a channel the model can't
+    # ignore the way it can ignore prompt text. Velocity (S, A, Z), each about -2.5..+2.5, is the push of this turn:
+    #   tense (A < 0)                  -> lower temperature (more careful)
+    #   abstract / inquiring (Z > 0)   -> a bit higher temperature, longer reply
+    #   a big move (fast, aroused)     -> shorter reply
+    #   no clear memory + a question   -> lower temperature (less room to invent)
+    # Length is a target number of sentences (a hard token cap just cuts replies off mid-sentence).
+    # =========================================================================
+    QUESTION_STARTS = ("what", "how", "why", "when", "where", "who", "do", "did", "does", "can", "could", "is", "are",
+                       "was", "were", "will", "would", "have", "has", "tell")
+
+    def is_question(self, text: str) -> bool:
+        t = text.strip().lower()
+        return "?" in t or t.startswith(self.QUESTION_STARTS)
+
+    SLEEP_WORDS = {"sleep", "slept", "sleeping", "asleep", "nap", "napped", "napping", "rest", "rested", "resting", "tired",
+                   "sleepy", "woke", "wake", "waking", "dream", "dreams", "dreamed", "dreamt", "dreaming", "goodnight"}
+
+    def sleep_lines(self, user_text: str):
+        """Engine v22.1: (1) when the user asks about sleep, the brain's real record of its last sleep, so the model doesn't
+        invent one; (2) when sleep pressure is high (or the user asks if it's tired), a plain line about it.
+        A brain whose NAME is a sleep word ("Dream") doesn't trigger this by being addressed; only the word does."""
+        if not hasattr(self.brain, "sleep_pressure_report"):
+            return "", ""
+        toks = self.brain.clean_tokens(user_text)
+        hits = set(toks) & self.SLEEP_WORDS
+        own = (self.brain.user_profile.get("bot_name") or "").strip().lower()
+        if own in hits and own not in self.brain.find_names_used_as_words(user_text, toks):
+            hits.discard(own)  # "Dream, how are you?" is the name, not the word
+        sleep_line = ""
+        if hits:
+            desc = self.brain.describe_last_sleep()
+            sleep_line = (f"\nYour last sleep (true, from your own record): {desc}." if desc
+                          else "\nYour last sleep: you have no record of sleeping yet. If asked, say plainly that you "
+                               "don't remember it; don't describe what it was like.")
+        rep = self.brain.sleep_pressure_report()
+        pressure_line = ""
+        if rep["level"] in ("high", "very high"):
+            pressure_line = (f"\nSleep pressure: {rep['level']} — you have learned a lot since your last full sleep and feel ready to rest. "
+                             f"Mention it briefly only if it fits; don't dramatize it.")
+        elif hits & {"tired", "sleepy", "rest", "rested", "sleep"}:
+            pressure_line = f"\nSleep pressure: {rep['level']} — say so plainly if asked whether you're tired."
+        return sleep_line, pressure_line
+
+    def tone_settings(self, audit: dict, user_text: str) -> dict:
+        vs, va, vz = (list(audit.get("velocity", [0.0, 0.0, 0.0])) + [0.0, 0.0, 0.0])[:3]
+        speed = (vs * vs + va * va + vz * vz) ** 0.5
+        temp = self.temperature + 0.06 * vz - 0.08 * max(0.0, -va)
+        unsure = self.callosum["memory"] and self.memory_strength <= 1.0 and self.is_question(user_text)
+        if unsure:
+            temp -= 0.15
+        temp = round(min(1.0, max(0.25, temp)), 2)
+        length = min(1.3, max(0.5, 1.0 + 0.12 * vz - 0.07 * speed))
+        sentences = int(min(8, max(2, round(4.5 * length))))
+        return {"temperature": temp, "sentences": sentences, "unsure": unsure,
+                "velocity": [round(vs, 2), round(va, 2), round(vz, 2)]}
+
+    @staticmethod
+    def trim_to_sentence(text: str) -> str:
+        """A reply cut off by the length limit is trimmed back to its last full sentence."""
+        ends = [m.end() for m in re.finditer(r"[.!?…][\"'”’)]?(?=\s|$)", text)]
+        if ends and ends[-1] >= 0.4 * len(text):
+            return text[:ends[-1]].rstrip()
+        return text.rstrip() + "…"
 
     def host_is_reachable(self) -> bool:
         """Quick 2-second check that something is listening on the LLM port."""
@@ -687,7 +998,16 @@ class TorrentLLMMiddleware:
             problem = f"nothing is listening at {self.base_url}"
         else:
             try:
-                reply = self.stream_chat(messages, self.max_tokens, self.temperature, show_progress=True)
+                tone = self.turn_tone if (self.turn_tone and self.callosum["tone"]) else None
+                temperature = tone["temperature"] if tone else self.temperature
+                self.last_tone, self.turn_tone = tone, None
+                # The sentence target in the prompt was ignored in the 2026-11-08 test (asked ~4, got ~9), so the target
+                # also sets a token ceiling (~45 tokens a sentence, roomy for long sentences); a reply that hits it is
+                # trimmed back to its last full sentence below.
+                cap = min(self.max_tokens, 45 * tone["sentences"] + 30) if tone else self.max_tokens
+                reply = self.stream_chat(messages, cap, temperature, show_progress=True)
+                if reply and self.last_finish_reason == "length":
+                    reply = self.trim_to_sentence(reply)
                 if reply:
                     self.connected = True
                     self._warned_unreachable = False
@@ -715,6 +1035,14 @@ class TorrentLLMMiddleware:
         print(f"\n[!] No LLM reply this turn ({problem}). Using the T.O.R.R.E.N.T. native reply.")
         self.last_used_fallback = True
         return fallback_reply
+
+    def grounded_words(self, user_text: str, user_concepts: list) -> set:
+        """Words the model could have got from the user or the brain this turn (see last_ground_text), plus words
+        already linked to the user's concepts."""
+        ground = self.with_singulars(self.brain.clean_tokens(f"{user_text} {self.last_ground_text}".replace("-", " ")))
+        for uc in user_concepts[:5]:
+            ground |= {nb for nb, wt in self.brain.assoc_graph.get(uc, {}).items() if wt >= 0.45}
+        return ground
 
     def post_process_llm_response(self, user_text: str, llm_reply: str, audit: dict, user_concepts: list) -> dict:
         active_traj = audit["flippedTrajectory"] if self.brain.governor_mode == "FLIPPED" else audit["originalTrajectory"]
@@ -745,8 +1073,12 @@ class TorrentLLMMiddleware:
         bridge_coherence = round(self.brain.cosine_similarity(llm_vec, bridge_vec), 3)
         combined_coherence = round(0.6 * cell_coherence + 0.4 * bridge_coherence, 3)
 
-        wired_concepts, extracted_prop, tectonic_logs = [], None, []
+        wired_concepts, extracted_prop, tectonic_logs, held_back = [], None, [], []
         cleavage_count_before = len(self.brain.cleavage_log)
+        # Engine v22: learning from the reply is waking learning, so it builds sleep pressure like the user's words do
+        # (the engine only counts what happens inside respond(), and this runs after it). Older engines ignore this.
+        reply_cell_mass_before = sum(sum(v.values()) for v in self.brain.cortical_cells.values())
+        self.brain.awake_turn = True
 
         if self.voice_mode == "SOVEREIGN" or self.last_used_fallback:
             # SOVEREIGN never learns from replies; a native fallback reply is the engine's own output, so it isn't re-learned
@@ -758,6 +1090,12 @@ class TorrentLLMMiddleware:
                 and c not in user_concepts
                 and c != ponder_bridge
             ]
+            if self.callosum["memory"]:
+                # Careful learning applies here too (Gyre runs ATTENUATED): only a grounded word may be the one learned.
+                # In the 2026-11-08 test, 'crystalline' from an invented birthday story was wired this way.
+                ground = self.grounded_words(user_text, user_concepts)
+                held_back = [c for c in novel_glove_cands if c not in ground][:3]
+                novel_glove_cands = [c for c in novel_glove_cands if c in ground]
             if novel_glove_cands:
                 top_novel = novel_glove_cands[0]
                 wired_concepts = [top_novel]
@@ -769,16 +1107,34 @@ class TorrentLLMMiddleware:
                     self.brain.wire_concepts(user_concepts[0], top_novel, amount=0.15)
                 self.brain.update_cell_centroid_and_emotion(s, a, z, wired_concepts, allow_cleave=False)
         else:
+            ideas_before = len(self.brain.idea_memory)
             extracted_prop = self.brain.extract_proposition(normalized_reply, llm_tokens, pure_llm_concepts, cell_key)
             wired_concepts = pure_llm_concepts[:4]
+            # Careful learning (callosum step 1): a reply word is "grounded" if it was in the user's words or in what the
+            # brain gave the model (prompt, notes, memories), or is already linked to the user's concepts. Grounded words are
+            # learned as before. Ungrounded ones (very likely the model inventing) are only linked faintly and don't enter
+            # the cell, so they can't crystallize or spread through dreams.
+            grounded = set(wired_concepts)
+            if self.callosum["memory"]:
+                ground = self.grounded_words(user_text, user_concepts)
+                grounded = {c for c in wired_concepts if c in ground}
+                held_back = [c for c in wired_concepts if c not in grounded]
+                if extracted_prop and not ({extracted_prop["subj"], extracted_prop["obj"]} <= ground):
+                    # an "idea" built from invented words is not kept as a waking memory
+                    self.brain.idea_memory = [p for p in self.brain.idea_memory[:ideas_before]] + \
+                        [p for p in self.brain.idea_memory[ideas_before:] if p is not extracted_prop]
+                    extracted_prop = None
             self.brain.cortical_cells.setdefault(cell_key, {})
             for c in wired_concepts:
                 self.brain.get_or_create_vector(c, context_vec=cell_vec)
-                self.brain.cortical_cells[cell_key][c] = self.brain.cortical_cells[cell_key].get(c, 0) + 1
+                k = 1.0 if c in grounded else 0.25
+                if c in grounded:
+                    self.brain.cortical_cells[cell_key][c] = self.brain.cortical_cells[cell_key].get(c, 0) + 1
                 if ponder_bridge and c != ponder_bridge:
-                    self.brain.wire_concepts(ponder_bridge, c, amount=0.65)
+                    self.brain.wire_concepts(ponder_bridge, c, amount=0.65 * k)
                 if user_concepts and c != user_concepts[0]:
-                    self.brain.wire_concepts(user_concepts[0], c, amount=0.55)
+                    self.brain.wire_concepts(user_concepts[0], c, amount=0.55 * k)
+            wired_concepts = [c for c in wired_concepts if c in grounded]
 
             if combined_coherence < 0.25 and pure_llm_concepts:
                 outlier = min(pure_llm_concepts, key=lambda w: self.brain.dot(self.brain.vectors.get(w, cell_vec), cell_vec))
@@ -787,6 +1143,10 @@ class TorrentLLMMiddleware:
             self.brain.update_cell_centroid_and_emotion(s, a, z, wired_concepts, allow_cleave=True)
             tectonic_logs = self.brain.run_crystal_annealing_and_tectonics()
 
+        self.brain.awake_turn = False
+        if hasattr(self.brain, "cells_added_since_sleep"):
+            gained = sum(sum(v.values()) for v in self.brain.cortical_cells.values()) - reply_cell_mass_before
+            self.brain.cells_added_since_sleep += max(0.0, gained)
         new_cleavages = self.brain.cleavage_log[cleavage_count_before:]
         shear_after = self.brain.crystal_lattices.get(cell_key, {}).get("shear_stress", 0.0)
 
@@ -800,6 +1160,9 @@ class TorrentLLMMiddleware:
             "combinedCoherence": combined_coherence,
             "llmCandidateConcepts": pure_llm_concepts,
             "llmWiredConcepts": wired_concepts,
+            "llmHeldBack": held_back if self.voice_mode != "SOVEREIGN" and not self.last_used_fallback and self.callosum["memory"] else [],
+            "tone": self.last_tone,
+            "memoryStrength": self.memory_strength,
             "llmPropositionLearned": extracted_prop["summary"] if extracted_prop else None,
             "retrievedPastEpisodes": self.last_retrieved_episodes,
             "postShearStress": shear_after,
@@ -848,17 +1211,21 @@ if __name__ == "__main__":
     )
 
     print("=" * 86)
-    print(f" 🧠 {header_identity} · T.O.R.R.E.N.T. v21 Brain + Local LLM Vocal Cortex")
+    print(f" 🧠 {header_identity} · T.O.R.R.E.N.T. v22.3 Brain + Local LLM Vocal Cortex")
     print(f"    Platform   : {platform_badge} | GloVe Vocab: {len(brain.raw_glove):,} vectors")
     print(f"    Prompt Mode: {'WHEELS-OFF 🚀 (Raw Spatial Telemetry)' if not brain.training_wheels else 'WHEELS-ON 🛞 (Scaffolding)'}")
     print(f"    Efference  : {middleware.voice_mode_badge()} | Local TTS: {'ON 🔊' if voice_io.tts_enabled else 'OFF 🔇 (/tts)'}")
+    if getattr(brain, "nightmare_mode", False):
+        print("    Nightmare  : 🌑 ON (lean-up rules off for this brain; /nightmare to turn off)")
     print(f"    Memory     : {len(middleware.episodic_archive)} Past Episodes | Summary: {'ACTIVE 📜' if middleware.running_summary else 'Fresh Session'}")
     print(f"    Backend    : {middleware.backend.upper()} | Active Model: {middleware.model_name} ({middleware.endpoint})")
     print(f"    Status     : {status_str}")
     print("-" * 86)
     print(" Voice Commands  : /tts (toggle speech out), /listen [sec] (mic STT in), /voicechat (hands-free loop)")
     print(" Bridge Commands : /memory [compress], /mode <sovereign|attenuated|full>, /test, /connect, /models, /model, /prompt, /post")
-    print(" TORRENT Commands: /wheels, /export, /crystals, /ponder, /sleep, /emotions, /think, /ideas, /dream, /telemetry, /audit, /grid, /exit")
+    print(" Notes & Undo    : /note <key>: <text>, /notes, /notes delete <n>, /recall <word>, /back (undo your last message)")
+    print(" Callosum        : /callosum [on|off], /callosum memory on|off, /callosum tone on|off  (see the tone with /prompt)")
+    print(" TORRENT Commands: /wheels, /export, /crystals, /ponder, /sleep, /emotions, /think, /ideas, /dream, /telemetry, /audit, /grid, /nightmare, /exit")
     print("=" * 86)
 
     brain.run_boot_calibration_and_handshake()
@@ -887,6 +1254,73 @@ if __name__ == "__main__":
             continue
 
         cmd = user_input.lower()
+        cmd_word = cmd.split()[0] if cmd.startswith("/") else ""
+        # /back only undoes the last MESSAGE: any command that could change the brain in between cancels it
+        READ_ONLY_CMDS = {"/back", "/notes", "/recall", "/facts", "/prompt", "/post", "/audit", "/crystals", "/emotions",
+                          "/lexicon", "/telemetry", "/thoughts", "/ideas", "/links", "/cells", "/grid", "/models",
+                          "/model", "/test", "/tts", "/export", "/connect", "/flip", "/callosum"}
+        if cmd_word and cmd_word not in READ_ONLY_CMDS and not (cmd_word in ("/memory", "/history") and len(cmd.split()) == 1):
+            middleware.undo_ready = False
+
+        if cmd_word == "/back":
+            undone = middleware.undo_last_turn()
+            if undone:
+                print(f"[↩️ Undid your last message: \"{cut_at_word(undone, 80)}\"]")
+                print("   The brain, chat history and memories are back to how they were before it. (Logged in the brain file.)")
+            else:
+                print("[↩️ Nothing to undo. /back works once, right after a message, before any other command that changes the brain.]")
+            continue
+
+        if cmd_word == "/note":
+            body = user_input[len("/note"):].strip()
+            if not body:
+                print("Usage: /note TCM: Toroidal-Crystalline Manifold   (or /note any sentence you want remembered)")
+                continue
+            note = middleware.add_note(body)
+            label = f"{note['key']}: {note['text']}" if note["key"] else note["text"]
+            print(f"[📝 Noted: {label}]")
+            print(f"   Saved in {middleware.notes_path()}" + (f" · '{note['key']}' was also taught to the brain" if note["key"] and note["key"].lower() in brain.knowledge_facts else ""))
+            continue
+
+        if cmd_word in ("/notes", "/unnote"):
+            parts = user_input.split()
+            notes = middleware.load_notes()
+            if cmd_word == "/unnote" or (len(parts) >= 2 and parts[1].lower() in ("delete", "del", "remove")):
+                num = parts[1] if cmd_word == "/unnote" and len(parts) >= 2 else (parts[2] if len(parts) >= 3 else "")
+                if not num.isdigit() or not (1 <= int(num) <= len(notes)):
+                    print(f"Which note? e.g. /notes delete 2 (there are {len(notes)}).")
+                    continue
+                gone = notes.pop(int(num) - 1)
+                middleware.write_notes(notes)
+                print(f"[🗑️ Removed note: {gone['key'] + ': ' if gone['key'] else ''}{gone['text']}]")
+                continue
+            if not notes:
+                print(f"No notes yet. Add one with /note TCM: Toroidal-Crystalline Manifold  (file: {middleware.notes_path()})")
+                continue
+            print(f"📝 Notes ({middleware.notes_path()}):")
+            for i, n in enumerate(notes, 1):
+                print(f"  {i:>2}. {n['key'] + ': ' if n['key'] else ''}{n['text']}" + (f"   [{n['meta']}]" if n["meta"] else ""))
+            continue
+
+        if cmd_word == "/recall":
+            word = user_input[len("/recall"):].strip().lower()
+            notes = middleware.load_notes()
+            hits = [n for n in notes if word and (word in n["key"].lower() or word in n["text"].lower())] if word else notes
+            if not hits:
+                print(f"No notes mention '{word}'." if word else "No notes yet.")
+                continue
+            for i, n in enumerate(hits, 1):
+                print(f"  {i:>2}. {n['key'] + ': ' if n['key'] else ''}{n['text']}")
+            ans = input("Add these to your next message? (y/n, or numbers like 1,3): ").strip().lower()
+            if ans in ("y", "yes"):
+                middleware.pinned_notes = hits
+            elif ans and ans != "n":
+                picked = [int(x) for x in re.split(r"[,\s]+", ans) if x.isdigit() and 1 <= int(x) <= len(hits)]
+                middleware.pinned_notes = [hits[i - 1] for i in picked]
+            if middleware.pinned_notes:
+                print(f"[📌 {len(middleware.pinned_notes)} note(s) will go with your next message.]")
+            continue
+
         if cmd in ("exit", "/exit", "quit", "/quit"):
             print("\n🌙 Entering NREM Homeostasis, Crystal Annealing & 3D REM Sleep Consolidation...")
             for d in brain.run_dream_cycle(3):
@@ -927,11 +1361,13 @@ if __name__ == "__main__":
                     print("  [i] No speech detected.")
                     continue
                 print(f"🗣️ You said: \"{spoken_text}\"")
+                middleware.take_snapshot(spoken_text)  # for /back
                 pre_reply, audit, salient_c = brain.respond(spoken_text)
                 last_system_prompt = middleware.build_state_injection(spoken_text, pre_reply, audit, salient_c)
                 llm_reply = middleware.call_local_llm(last_system_prompt, spoken_text, fallback_reply=pre_reply)
                 post_report = middleware.post_process_llm_response(spoken_text, llm_reply, audit, salient_c)
                 middleware.record_turn_and_maybe_summarize(spoken_text, llm_reply, audit, salient_c)
+                middleware.undo_ready = True
                 bot_speaker = brain.user_profile.get("bot_name") or "[Manifold]"
                 print(f"\n🤖 {bot_speaker} ({'native' if middleware.last_used_fallback else middleware.model_name}): {llm_reply}")
                 voice_io.speak(llm_reply)
@@ -1033,6 +1469,23 @@ if __name__ == "__main__":
 
         elif cmd == "/prompt":
             print("\n💉 LAST INJECTED STATE PROMPT:\n" + (last_system_prompt or "(Run a turn first.)"))
+            if middleware.last_tone:
+                t = middleware.last_tone
+                print(f"\n🎚️ Tone sent with it: temperature {t['temperature']} · ~{t['sentences']} sentences"
+                      f" · velocity (S,A,Z) {tuple(t['velocity'])}" + (" · memory unsure" if t["unsure"] else ""))
+            continue
+
+        elif cmd_word == "/callosum":
+            parts = cmd.split()
+            if len(parts) == 3 and parts[1] in ("memory", "tone") and parts[2] in ("on", "off"):
+                middleware.callosum[parts[1]] = parts[2] == "on"
+            elif len(parts) == 2 and parts[1] in ("on", "off"):
+                middleware.callosum = {k: parts[1] == "on" for k in middleware.callosum}
+            elif len(parts) > 1:
+                print("Usage: /callosum  ·  /callosum on|off  ·  /callosum memory on|off  ·  /callosum tone on|off")
+                continue
+            print(f"[🧬 Callosum · memory (strength labels + careful learning): {'ON' if middleware.callosum['memory'] else 'OFF'}"
+                  f" · tone (brain sets temperature + reply length): {'ON' if middleware.callosum['tone'] else 'OFF'}]")
             continue
 
         elif cmd.startswith("/export"):
@@ -1106,6 +1559,15 @@ if __name__ == "__main__":
             brain.save_memory()
             continue
 
+        elif cmd == "/nightmare":
+            if not hasattr(brain, "nightmare_mode"):
+                print("This engine has no nightmare mode (needs torrentengine v22.3 or newer).")
+                continue
+            brain.nightmare_mode = not brain.nightmare_mode
+            brain.save_memory()
+            print(f"[🌑 Nightmare mode is now {'ON: the lean-up rules are off for this brain' if brain.nightmare_mode else 'OFF'}]")
+            continue
+
         elif cmd == "/flip":
             brain.governor_mode = "ORIGINAL" if brain.governor_mode == "FLIPPED" else "FLIPPED"
             print(f"[🔄 Governor Vocal Layer is now bound to: {brain.governor_mode}]")
@@ -1164,6 +1626,7 @@ if __name__ == "__main__":
             middleware.chat_history = []
             middleware.running_summary = ""
             middleware.episodic_archive = []
+            middleware.pinned_notes, middleware.undo_snapshot, middleware.undo_ready = [], None, False
             print("🧠 3D Toroidal Brain wiped and reset.")
             brain.run_boot_calibration_and_handshake()
             continue
@@ -1171,15 +1634,18 @@ if __name__ == "__main__":
         elif cmd.startswith("/") and not cmd.startswith("/listen") and not cmd.startswith("/mic"):
             print("Voice Commands  : /tts, /listen [sec], /voicechat")
             print("Bridge Commands : /memory [compress], /mode <sovereign|attenuated|full>, /test, /connect, /models, /model, /prompt, /post")
-            print("TORRENT Commands: /wheels, /export, /crystals, /ponder, /sleep, /emotions, /think, /ideas, /dream, /telemetry, /audit, /grid, /exit")
+            print("Notes & Undo    : /note <key>: <text>, /notes, /notes delete <n>, /recall <word>, /back (undo your last message)")
+            print("TORRENT Commands: /wheels, /export, /crystals, /ponder, /sleep, /emotions, /think, /ideas, /dream, /telemetry, /audit, /grid, /nightmare, /exit")
             continue
 
         # Execute the full 3-stage Brain -> LLM -> Post-Processor turn
+        middleware.take_snapshot(user_input)  # for /back
         pre_reply, audit, salient_c = brain.respond(user_input)
         last_system_prompt = middleware.build_state_injection(user_input, pre_reply, audit, salient_c)
         llm_reply = middleware.call_local_llm(last_system_prompt, user_input, fallback_reply=pre_reply)
         post_report = middleware.post_process_llm_response(user_input, llm_reply, audit, salient_c)
         middleware.record_turn_and_maybe_summarize(user_input, llm_reply, audit, salient_c)
+        middleware.undo_ready = True
 
         bot_speaker = brain.user_profile.get("bot_name") or "[Manifold]"
         print(f"\n🤖 {bot_speaker} ({'native' if middleware.last_used_fallback else middleware.model_name}): {llm_reply}")
@@ -1196,7 +1662,13 @@ if __name__ == "__main__":
                 f"Mode: {middleware.voice_mode} | "
                 f"Coherence: {post_report['combinedCoherence']:+.2f} | "
                 f"Recalled: {len(middleware.last_retrieved_episodes)} ep | "
-                f"LLM Wired: {post_report['llmWiredConcepts']}]"
+                f"LLM Wired: {post_report['llmWiredConcepts']}"
+                + (f" · held back: {post_report['llmHeldBack']}" if post_report.get("llmHeldBack") else "")
+                + (f" | Tone: temp {post_report['tone']['temperature']}, ~{post_report['tone']['sentences']} sentences"
+                   + (", unsure" if post_report['tone']['unsure'] else "") if post_report.get("tone") else "")
+                + (f" | Sleep: {brain.sleep_pressure_report()['level']}" if hasattr(brain, "sleep_pressure_report") else "")
+                + (" | 🌑 nightmare" if getattr(brain, "nightmare_mode", False) else "")
+                + "]"
             )
         if show_grid:
             print("\n" + brain.print_overlay_lattice(audit))
