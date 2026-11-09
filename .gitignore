@@ -6,6 +6,8 @@ latest_trace.json
 *_memory.json
 brains/
 *.lock
+*.notes.md
+*.notes.md.tmp
 *.adopted-*
 *.before-cleanup-*
 *.tmp
