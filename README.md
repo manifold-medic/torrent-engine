@@ -16,6 +16,7 @@ An experimental "language-enabled toroidal crystalline manifold" (LTCM): a small
 | `brainpicker.py` | Lets you keep several brains (TCMs) and choose one at start-up. Keep it in the same folder. |
 | `ltcmbridge.py` | The easiest way to start: loads the engine and, if a local LLM (Ollama or an OpenAI-compatible server) is reachable, uses it as a voice. Falls back to the engine's own replies otherwise. Optional local voice in/out. |
 | `catchup_cells.py` | Optional one-time cleanup for a brain that grew overfull under an engine older than v21.7. Works on a copy. |
+| `cleanwords.py` | Optional: finds junk words in a brain file (glued or cut-off words, typos) and removes them. Makes a backup first. |
 | `TORRENT_DISCLOSURE.md` | Full technical description of how everything works, published as a defensive disclosure. |
 | `CHANGELOG.md` | What changed in each version. |
 | `LICENSE` | Apache-2.0. |
