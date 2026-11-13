@@ -12,12 +12,14 @@ An experimental "language-enabled toroidal crystalline manifold" (LTCM): a small
 
 | File | Purpose |
 |---|---|
-| `torrentengine.py` | The engine (v22.3). Standard library only. |
+| `torrentengine.py` | The engine (v24.1.1). Standard library only. |
+| `torrent_wordspace_50k.gz` | The word space: 50,000 processed GloVe vectors (~20 MB). Keep it next to the engine; it is loaded automatically. |
 | `brainpicker.py` | Lets you keep several brains (TCMs) and choose one at start-up. Keep it in the same folder. |
 | `ltcmbridge.py` | The easiest way to start: loads the engine and, if a local LLM (Ollama or an OpenAI-compatible server) is reachable, uses it as a voice. Falls back to the engine's own replies otherwise. Optional local voice in/out. |
 | `catchup_cells.py` | Optional one-time cleanup for a brain that grew overfull under an engine older than v21.7. Works on a copy. |
 | `cleanwords.py` | Optional: finds junk words in a brain file (glued or cut-off words, typos) and removes them. Makes a backup first. |
 | `TORRENT_DISCLOSURE.md` | Full technical description of how everything works, published as a defensive disclosure. |
+| `TORRENT_DISCLOSURE_ADDENDUM_1.md` | What was added from v21.1 to v24.1.1 (levels, idle time, live idle, speaking up, a sense of time, the bridge's memory and honesty features), in the same defensive-disclosure form. |
 | `CHANGELOG.md` | What changed in each version. |
 | `LICENSE` | Apache-2.0. |
 
@@ -66,12 +68,21 @@ most-used words (`--keep`), and no count stays above 8 (`--max-count`); then the
 weights, memories, dreams and names are left alone. It prints before-and-after numbers so you can compare. Pick the
 cleaned copy in the start-up menu once you're happy with it.
 
-### Word file (optional)
+### Word file
 
-The engine works with no extra files, using a small built-in vocabulary of about 212 words. For a much larger vocabulary, put a word file with "glove" in its name next to the scripts; it is detected automatically:
+The repo includes `torrent_wordspace_50k.gz` (since v22.7.1): 50,000 GloVe word vectors, already processed the way the
+engine needs them. It is the word space every version since v22 was developed and tested with. Keep it next to
+`torrentengine.py` and nothing else is needed. (GloVe: Stanford NLP, Public Domain Dedication and License v1.0.)
+Without it, or a GloVe file, the engine falls back to a small built-in vocabulary of about 212 words and warns that it
+is in test mode.
 
-- **Real GloVe (recommended to try):** download `glove.6B.zip` from [Stanford GloVe](https://nlp.stanford.edu/projects/glove/) and take `glove.6B.50d.txt` out of it. Its vectors are public domain. At start-up the engine removes the shared direction that makes GloVe words look alike and calibrates its emotion, social and depth axes from built-in seed words. This mode is new: the engine's other thresholds were tuned on the smaller 2-D map below, so it may behave differently while it gets retuned.
-- **A 2-D word map:** a text file with two numbers and a word on each line, such as a UMAP projection of GloVe. This is how the engine was developed. It's fast and light, which helps on phones.
+Optional alternatives, detected automatically when a file with "glove" in its name sits next to the scripts:
+
+- **The raw GloVe file** (`glove.6B.50d.txt` from `glove.6B.zip` at [Stanford GloVe](https://nlp.stanford.edu/projects/glove/)):
+  gives the same word space as the packaged file; the engine processes it at the first start and saves a cache. Only
+  needed if you'd rather start from the original download.
+- **A 2-D word map:** a text file with two numbers and a word on each line, such as a UMAP projection of GloVe. This is
+  how the earliest versions were developed; it is fast and light, but current versions are tuned on the GloVe space.
 
 Use a separate folder for each kind of word file, because a saved brain belongs to the word space it was learned in. Details are in section 2.3 of the disclosure.
 
@@ -87,7 +98,41 @@ Useful environment variables:
 - `TORRENT_VOICE_MODE`: how much the engine learns from the LLM's replies: `SOVEREIGN` (nothing), `ATTENUATED` (a little), `FULL` (default).
 - Optional speech: `TORRENT_WHISPER_MODEL` and `TORRENT_PIPER_MODEL`. Speech input needs `pip install faster-whisper sounddevice numpy`; speech output uses Piper, `pyttsx3`, or your system's built-in voice. Commands: `/tts`, `/listen`, `/voicechat`.
 
-Handy in-chat commands: `/crystals`, `/ponder`, `/sleep`, `/dream`, `/audit`, `/grid`, `/flip`, `/export`, `/emotions`, `/telemetry`, `/wheels` (switch between the plain and the detailed LLM prompt), `/nightmare` (see below).
+Handy in-chat commands: `/crystals`, `/ponder`, `/sleep`, `/dream`, `/audit`, `/grid`, `/flip`, `/export`, `/emotions`, `/telemetry`, `/wheels` (switch between the plain and the detailed LLM prompt), `/nightmare` (see below), `/levels`, `/idle`, `/live`, `/speak`, `/rhythm`, `/face`, `/read`, `/whoami`, `/people`, `/facts`, `/note`, `/back` (undo your last message), `/prompt` (see what the LLM was sent). The bridge lists them all at start-up.
+
+More environment variables for the newer features: `TORRENT_HOSTS` (a comma list of LLM servers to try; the last one
+that worked is remembered in `torrent_hosts.json`), `TORRENT_FACE_PORT` / `TORRENT_FACE_HOST` / `TORRENT_FACE_PASSWORD`
+(the face page), `TORRENT_LIVE_TICK` (seconds between live idle ticks, default 20), `TORRENT_NOTIFY=1` (phone
+notification for speak-ups on Termux, needs the Termux:API app).
+
+### Levels, idle time and real time
+
+Since v23.0 a brain has four levels, shown on the bridge's status line as `⚡0.42 ☯-0.30 ✨0.55 💤0.12`: arousal (how
+wound up it is), valence (mood, measured against its own usual), novelty and sleep pressure. They change with each
+message and with clock time. The names are vocabulary for this engine only, not medical or neuroscience claims.
+
+These are **experimental and off unless you turn them on** (each is saved per brain):
+
+- **Idle time** (`/idle`): a silence is spent on the brain's own material. It chooses, one decision at a time, between
+  wandering along its links, leaping to a word it resembles, thinking back to a recent moment, dozing and sleeping.
+  What it learns while idle is tagged "idle" and kept faint. `/idle why` shows each choice and its reasons.
+- **Live idle** (`/live on`): the same choices made while the silence happens, on a background clock, instead of all at
+  once when the next message arrives.
+- **Speaking up** (`/speak on`, needs live idle): the brain can send you a message first when something builds up to
+  say. The brain decides what it is about; the LLM only words it. It waits at least 20 minutes after your last message,
+  never speaks while asleep, and speaks less when its messages go unanswered.
+- **Face page** (`/face`): a small local web page that draws the levels as a face, with a chat box. It is a visualizer
+  of the numbers, not a claim about feelings. Chat from the page only works on the same device unless
+  `TORRENT_FACE_PASSWORD` is set.
+- **Daily rhythm** (`/rhythm on`): idle choices follow this computer's clock, so a brain left alone sleeps more easily
+  at night and less in the afternoon. `/rhythm +3` shifts its night three hours later. It doesn't change how messages
+  are learned.
+- **Felt time**: each silence also records how long it seemed (eventful stretches seem longer looking back, bored ones
+  drag while they pass, sleep seems short). It is only measured and told to the voice when asked, not used for anything.
+- **Reading** (`/read mybook.txt`): the brain reads a text file as a book, 40 sentences a night with a sleep between.
+
+When you ask the LLM voice how the brain is, what it thought about while alone, whether it slept, or what time it is,
+the bridge gives it the brain's real record and tells it to say it doesn't know anything else.
 
 ### Nightmare mode
 
@@ -108,11 +153,13 @@ reply of a session is slower because the model has to load). The 32 GB of RAM is
 
 ## Why this is public
 
-This project is published as a **defensive disclosure** so the ideas in it stay free for anyone to use and cannot later be patented by someone else. The description in `TORRENT_DISCLOSURE.md` is written to be detailed enough to re-implement. Permanent archived copies are on Zenodo: [doi.org/10.5281/zenodo.24040746](https://doi.org/10.5281/zenodo.24040746) always points to the latest version, and the original first release (v21.0, the dated disclosure) is [doi.org/10.5281/zenodo.24040747](https://doi.org/10.5281/zenodo.24040747).
+This project is published as a **defensive disclosure** so the ideas in it stay free for anyone to use and cannot later be patented by someone else. The description in `TORRENT_DISCLOSURE.md` (v21) and `TORRENT_DISCLOSURE_ADDENDUM_1.md` (v21.1 to v24.1.1) is written to be detailed enough to re-implement. Permanent archived copies are on Zenodo: [doi.org/10.5281/zenodo.24040746](https://doi.org/10.5281/zenodo.24040746) always points to the latest version, and the original first release (v21.0, the dated disclosure) is [doi.org/10.5281/zenodo.24040747](https://doi.org/10.5281/zenodo.24040747).
 
 ## Notes
 
-- Much of the code and design was developed with LLM assistance.
+- The code was written with LLMs under the author's direction. Claude (Anthropic; Claude Opus models) served as research
+  partner: code, tests and lab notes. Gemini (Google), working under the author's long-running "Meridian" instructions,
+  contributed design ideas (for example the face visualizer, curiosity about new words, and time labels on memories).
 - Related work is listed in section 13 of the disclosure.
 - Issues and forks are welcome.
 
