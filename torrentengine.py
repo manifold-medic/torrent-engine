@@ -1,5 +1,142 @@
 # =============================================================================
 # T.O.R.R.E.N.T. engine (torrentengine.py) — CHANGELOG
+# v25.0.0 (2026-11-14) — Trust and Connection: a new phase. Both measured only (nothing reads them to change the
+#   torus, the mood or what words learn; tested identical with and without, lab/CONNECTION_REPORT.md).
+#   * Connection v1: every word gets together_weights[w], -1 (met alone) .. +1 (met with someone), starting at 0 (no
+#     rating set measures felt togetherness, so each brain builds it from its own life). A person's message moves its
+#     top words toward trust_now(speaker) (0..1) at TOGETHER_RATE 0.05 (another brain in a dialogue: a quarter);
+#     every idle visit moves that word toward -1; an ignored speak-up moves its words toward -1 at 1.25x; sleep and
+#     book reading count as neither. Each wake-up sleep pulls every number 5% x depth toward 0. together_level
+#     (-1..+1): a message moves it halfway to that moment's togetherness, each idle step 2% toward -1.
+#     Front door: connection_status(word=None). Saved per brain; the trace carries "together".
+# v24.6.0 (2026-11-14) — trust v1 (measured only).
+#   * Per person and peer brain, good and bad experience counts (beta reputation, Josang & Ismail 2002), fading by
+#     half in TRUST_HALF_DAYS (14). trust = (a0 + good) / (a0 + b0 + good + bad); the caretaker starts at 3:2 (0.60),
+#     others at 2:2 (0.50). Experiences (after Mayer, Davis & Schoorman 1995): a warm message +0.1, a cold one -0.1
+#     (peers a quarter); a promise ("I'll be back", "brb", "see you tomorrow", "back in N minutes") kept by writing
+#     again before its deadline +1, broken -1 (24 h, tomorrow 36 h, "in N" 3 x N, at least 2 h); a speak-up answered
+#     within 30 min +0.5, ignored for 2 h -0.5. trust_now = trust + 0.1 x valence (the brain's side). Front doors:
+#     trust_value(), trust_now(), trust_event(); /people shows it. Lab: lab/TRUST_REPORT.md (5 of 6 predictions).
+# v24.5.0 (2026-11-14) — no engine change; version kept in step with the bridge (standard/research presets).
+# v24.4.9 (2026-11-14) — daily rhythm: four parts of the day by the brain's own clock (night 11 pm-7 am, the span the
+#   voice was already told "night"; morning; afternoon; evening). time_sense() gives "part"; the status no longer says
+#   night from 9 pm to 9 am. Idle urges unchanged.
+# v24.4.8 (2026-11-14) — contractions: he'll/she'll/she'd/he'd, it'll/itll, that'll, there'll, what'll, who'll, it'd,
+#   that'd, who'd are split ("he will"); the apostrophe used to be dropped, giving "hell", "shell", "shed", "itll".
+# v24.4.7 (2026-11-14) — the A edge (/aedge wrap|walls|level, saved per brain).
+#   * The Mood Ring's reply cell wrapped: one step past Joyful (6) was Distressed (0), so the happiest turns were told
+#     "very upset" while the mood level read +0.8. walls: each step's A cell is clipped to 0..6. level: the reply's A
+#     cell is the mood level's own cell (needs the levels; else walls). wrap: as before. The mood level, arousal and
+#     the next turn's start are the same in all three. Replay on 4 brains: wrong-end cells 1-10 per brain under wrap,
+#     0 under walls or level (lab/AEDGE_REPORT.md).
+# v24.4.6 (2026-11-14) — Z clearance with /zpush, and names stop pushing.
+#   * /zpush (Z follows the push, walls at 0 and 6) piled 50 of 84 replayed turns at Z=6. Now, with /zpush on, Z relaxes
+#     50% toward the middle before each turn (like the mood level and S with walls) and step 1 leaves Z alone. Tried and
+#     not kept as default: the full S recipe (average push, usual zero, soft edges) bunched Z in the middle (lab options).
+#     /zpush off = exactly as before.
+#   * Names vs words (v21.3) kept a brain's name out of its thinking but not out of the push: "Hello Wonder!" pushed the
+#     mood up (+3.6) and counted as a question (wonder is a question word); "Hello Fear" would push toward tense. A name
+#     used as a name now pushes nothing, counts as no question, no surprise and no tense word. Used as a word ("I wonder")
+#     it counts as before. Default on (a bug fix); TORRENT_NAMEPUSH=1 brings back the old behaviour.
+# v24.4.5 (2026-11-14) — no engine change; version kept in step with the bridge (face page voice is bridge-only).
+# v24.4.4 (2026-11-13) — the S edge (/sedge walls|overstim|wrap, saved per brain; DEFAULT CHANGED to walls).
+#   * Found (S build lab): S is a ring, so a turn pushed past one end came out the other (1 turn in 4; 16 of 21 past
+#     "about things", which then landed on "about people"). Matt chose (2026-11-13): walls by default, the
+#     overstimulation wrap as a switch, the old wrap kept for comparison.
+#   * walls: S stops at 0 and 6 (like Z with /zpush). overstim: a wall at "about things"; at "about people" the turn
+#     wraps round to "about things" (withdrawal) only while the brain is wound up (arousal >= OVERSTIM_AROUSAL, from
+#     the turn before; needs the levels on), otherwise a wall. wrap: exactly as before (v24.4.3).
+#   * The trace (audit) carries sEdge {mode, wrapped}. A and Z are unchanged.
+#   * Walls alone pinned 60 of 84 turns at S=0 (the push leans "about things", S adds up every push, and step 1 tilts
+#     S down). Five lab rounds (lab/SEDGE_REPORT.md) found what ends need; with walls or overstim, S also gets:
+#     the push as an AVERAGE over words (x1.5) instead of a sum; measured against this brain's usual S push (seeded
+#     from plain text, adapting 30% a turn); a dead zone (S_DEAD_ZONE); no built-in tilt (step 1 and the flipped
+#     path's odd-S step); SOFT edges (an outward step slows by 1 - |u|^6 near the ends); and clearance (S relaxes 50%
+#     toward the middle before each turn). Overstim fires on an outward step from S >= 5.0 while wound up.
+#     Result (Gyre-mobile replay): landings S 1..6 = 2 10 34 20 13 5, no pile-up, no capped pushes.
+#   * The default stays the ring (wrap) until this is tried in real chats; /sfix is unchanged (learning only).
+# v24.4.3 (2026-11-13) — no engine change; version kept in step with the bridge (/switches and /help are bridge-only).
+# v24.4.2 (2026-11-13) — new axis labels: Mood Ring A + People Ring S (per-brain test switch, off by default;
+#   /newlabels in the bridge, TORRENT_NEWLABELS=1).
+#   * Why: the old A labels described the calm axis as stillness (A=0) -> luminous clarity (A=6), but A measures mood:
+#     distress (fear, anger) -> joy (checked against Warriner 2013 and NRC VAD). The old S labels (Solitary ... Expansive)
+#     describe connectedness, which no rating set can check; the rebuilt S (v24.4.1) is "about things <-> about people".
+#   * With the switch on, five places use NEW_LABELS instead of BRAIN_LIBRARY for S and A: the axis names, the long
+#     descriptions (each cell's starting meaning and the words the voice is given), the two-word starting cell names,
+#     the S band words used for evolved cell names, and the native-voice descriptions. Z is unchanged.
+#   * Cells a brain has used keep their learned meaning (their centroids); unused cells get the new starting meaning.
+#     Evolved (stage 2) names move to the new band words the next time the cell is visited; names Matt gave (custom)
+#     are always kept. Off = exactly v24.4.1.
+# v24.4.1 (2026-11-13) — rebuilt S axis (per-brain test switch, off by default; /snew in the bridge, TORRENT_SNEW=1).
+#   * Found (S axis lab): today's S barely measures socialness (+0.24 vs human ratings) and mostly re-counts mood (+0.37).
+#   * With the switch on, a word's STARTING S weight comes from a direction fitted to human socialness ratings
+#     (Diveica, Pexman & Binney 2023, 7,417 rated words found in GloVe; ridge fit): "about things" <-> "about people"
+#     (+0.71 with ratings on held-out words, +0.07 with mood). Only the fitted direction (50 numbers, FITTED_S below)
+#     is in the engine, not the ratings. Centred so a typical word starts at 0, scaled to today's S spread.
+#   * Words the brain already has a social number for keep it (learning goes on as before); hand-set social seed words
+#     are unchanged. Only in "glove50d" word mode (where axes are calibrated). Off = exactly v24.4.0.
+# v24.4.0 (2026-11-13) — S wrap fix (per-brain test switch, off by default; /sfix in the bridge, TORRENT_SFIX=1).
+#   * Found (S rebuild lab): a word's social number learns from the turn's LANDING cell, (S - 3) / 3. The landing cell
+#     wraps mod 7, so a turn pushed past the "isolated" end lands on the most social cells and teaches its words
+#     "very social" (e.g. "Gyre I don't feel so good today" went S=0 -> S=5). About 1 turn in 4 crossed the S edge.
+#   * With the switch on: the social number learns from the turn's exact, unwrapped S position (what the trajectory
+#     already keeps), (S_exact - 3) / 3 clipped to -1..+1, the same fix the mood level got in v23.3. The landing cell,
+#     the next turn's start and the ring itself still wrap exactly as before (the S edge is a separate decision).
+#     Off = exactly v24.3.4.
+# v24.3.4 (2026-11-13) — mood push fix (per-brain test switch, off by default; /moodfix in the bridge, TORRENT_MOODFIX=1).
+#   * Found (replay of Gyre-mobile's goodbye, "You're awesome, Gyre!"): the calm-axis push only comes in whole steps and
+#     has a +-1 minimum, so a push of -0.28 (warm text just under the blank zero, plus carry-over from a cold turn) became
+#     a full -1: mood -0.35 -> -0.57. A grocery sentence, a sleepy goodbye and "sad and heavy" all got the same -1.
+#     Step 1 (shared by both paths) also moved A by -1 on odd S whatever the push, and AGAINST the push on even S, so a
+#     -1 push moved -1.69 cells but a +1 push only +1.31.
+#   * With the switch on: (1) dead zone on A, like Z's: a mood push weaker than A_DEAD_ZONE (0.5) is 0, and the flipped
+#     path's even-S step no longer forces +-1 when the push is 0; (2) step 1 doesn't move A (so +1 and -1 both move 1.5
+#     cells). Off = exactly v24.3.3. Only acts when the mood level or the levels are on.
+# v24.3.3 (2026-11-13) — no engine change; version kept in step with the bridge (sequestrant test switch is bridge-only).
+# v24.3.2 (2026-11-13) — no engine change; version kept in step with the bridge (label A/B test switch is bridge-only).
+# v24.3.1 (2026-11-13) — small fixes.
+#   * Speak-up about a new word: not for common English words (GloVe rank <= 10,000; "asked" was rank 477) or another
+#     form of a word it already knows ("asking", "storms"); rare words and words GloVe never had still count.
+#   * Two-word names: "Your name is Copy X" keeps "Copy X" as the name (shown and said); inside, the brain knows itself
+#     by the first word. A name keeps its written capitals ("CopyX" no longer becomes "Copyx").
+#   * live_doing() also gives the calm number of the walk's current word (the face frowns on a tense walk).
+# v24.3.0 (2026-11-13) — mood zero: what "usual" means for the mood (per-brain switch, off by default).
+#   * Found (replay of 57 of Matt's lines into Gyre): the usual lean is a running average of the calm push, so it learns
+#     the warmth of whoever talks most. Matt's lines push +1.6 on average and Gyre's lean sat at +1.72, so half of his
+#     ordinary lines read "below usual", plain text read as mild bad news, and his warmest lines never got the strongest
+#     warm push (the push is capped at +2.5). A faster lean rate changed nothing (the lean already matched his average).
+#   * mood_zero "blank": the mood is measured against what plain, feeling-free text does on THIS brain (the average
+#     push of 16 fixed plain sentences, BLANK_SENTENCES, with the brain's own calm numbers; nothing is learned from them).
+#     Re-measured at every wake-up sleep, so it follows the slow warming of the brain's words but never one person's
+#     warmth. "usual" = exactly v24.2.1. /moodzero in the bridge, TORRENT_MOODZERO=blank. The old lean keeps updating
+#     (shown for reference). Each side of the zero is stretched to the full +-2.5 scale (plain text measured +1.06 on
+#     Gyre, so without it a warm line could only reach +1.4 above zero and never got the strongest warm push).
+#   * Each person's own usual calm push is now kept (measure only, like the tone sense): shown in /people, and each
+#     message's push vs that person's usual is in levels() as "vsPerson" (warmer or cooler than they usually are).
+#   * Not taken: a faster lean (no change); capping the lean at +-1 (works on Gyre by coincidence, still learns the
+#     person); no zero at all (plain text then reads warm, +0.8 on Gyre).
+# v24.2.1 (2026-11-13) — another brain's words are learned faintly (fix for the Meridian/Hope echo collapse).
+#   * In v24.2 a "peer:<name>" line was learned exactly like the person's words (full-strength links, cell deposits,
+#     calm numbers, kept ideas); the tag only kept those words from counting as trusted. Two brains repeating each other
+#     for ~80 rounds made "stillness" the top hub of both (~307 total weight, ~4 of it trusted).
+#   * Now an untrusted peer line: links at PEER_LEARN (0.25) and new links start faint; calm/social/depth numbers move a
+#     quarter as much; no cell deposits, no cell renaming or cleaving; its "X leads to Y" ideas aren't kept (linked
+#     faintly instead). A trusted peer (trusted=True, tagged "user:<name>") is still learned like a person.
+# v24.2.0 (2026-11-13) — brain-to-brain dialogue moves into the main bridge (the Meridian bridge merge).
+#   * peer_respond(text, name, trusted=False): another brain's line. Answered like a person's, but tagged "peer:<name>"
+#     (not trusted), or "user:<name>" when trusted; it can't teach definitions, confirm a dream, or name/rename the brain.
+#   * open_sharing_words(other, memory_file): a second brain that shares the first one's word space in memory.
+#   No change to how a brain learns from the person or from its own voice.
+# v24.1.2 (2026-11-12) — the Z axis decision and small fixes from the v24.1.1 field runs (Khora, gyre-test).
+#   * Z follows the push (per-brain test switch, off by default; /zpush in the bridge, TORRENT_ZPUSH=1). On the active
+#     (¬R) path Z used to move max(1, push) every step and restart at 0 after landing on 6, so it worked as a turn clock
+#     (Gyre's landing Z by turn: 6,1,2,3,4,5,6,1,...) whatever was said. With the switch on, Z steps by the message's own
+#     Z velocity (no step when |vZ| < 0.5), stops at 0 and 6 instead of wrapping, and keeps its landing value. The R
+#     path, S and A are unchanged. Lab check (gyre-test copy, 6 concrete then 6 abstract messages): old 3,4,5,6,1,2 |
+#     3,6,2,4,5,0; switch on 0,0,0,0,0,0 | 0,3,5,6,6,6. Without the stop at the ends, concrete talk wrapped round to 6.
+#   * Trace labels: step 1 is labelled as the fixed rule move it is (it showed "push dA=+2" beside a move of -0.19), and
+#     every step's label is written from the move it actually makes.
+#   * The dream line says "named cell (...) as '...'" (it said "crystallized" when it only renamed the cell).
 # v24.1.1 (2026-11-12) — fixes from Fable 5.2's re-review of v24.1 (its letters and numbers in brackets).
 #   * [B] Naming offer, read in this order: a name in a naming form ("call yourself X", "I like X better"); hesitation
 #     ("not sure", "let me think"): stay unnamed; any clear yes ("yeah I guess", "yes, thank you"): the proposed name; a
@@ -686,7 +823,13 @@ CONTRACTIONS = {
     "you'll": "you will", "youll": "you will", "we'll": "we will",
     "they'll": "they will", "theyll": "they will", "i'd": "i would",
     "you'd": "you would", "youd": "you would", "we'd": "we would",
-    "they'd": "they would", "theyd": "they would", "doesn't": "does not", "doesnt": "does not"
+    "they'd": "they would", "theyd": "they would", "doesn't": "does not", "doesnt": "does not",
+    # v24.4.8: these reached the brain as one made-up or wrong word ("it'll" -> "itll"; "he'll" -> "hell", "she'll" ->
+    # "shell", "she'd" -> "shed"). The apostrophe-less forms are only listed where they aren't real words.
+    "it'll": "it will", "itll": "it will", "that'll": "that will", "thatll": "that will",
+    "there'll": "there will", "therell": "there will", "what'll": "what will", "whatll": "what will",
+    "who'll": "who will", "he'll": "he will", "she'll": "she will", "he'd": "he would", "she'd": "she would",
+    "it'd": "it would", "that'd": "that would", "who'd": "who would"
 }
 
 # Seed words that define each axis when full 50-number GloVe vectors are loaded.
@@ -719,12 +862,66 @@ def first_token_is_word(first_tok):
     except ValueError:
         return True
 
-ENGINE_VERSION = "24.1.1"  # the bridge shows this at startup so a mismatched engine/bridge pair is easy to spot
+# v24.4.1: the rebuilt S direction ("about things" -> "about people"), fitted to human socialness ratings
+# (Diveica et al. 2023) on this engine's glove50d vectors. Derived numbers only; the ratings themselves are not included.
+FITTED_S = {"u": [-0.028110, 0.012982, -0.152448, 0.025719, 0.141745, -0.091978, 0.064412, 0.011098, -0.115509, 0.108792, 0.053221, -0.091104, 0.045130, -0.101854, 0.074622, -0.166530, -0.009531, 0.129939, 0.297705, 0.236371, 0.062900, 0.257796, -0.207951, 0.187748, 0.048542, -0.195346, 0.018157, -0.357277, -0.218971, 0.186976, -0.134556, 0.232669, -0.055094, -0.153677, -0.098828, -0.047262, -0.099894, -0.154905, -0.195293, 0.101505, 0.037193, -0.022755, -0.006067, 0.010776, 0.071730, -0.150100, -0.213300, 0.040796, 0.055699, 0.158766],
+            "center": 0.010818, "scale": 8.222780, "n_rated": 7417}
+
+# v24.4.2: new S and A labels (used when a brain's /newlabels switch is on). Chosen by Matt from data-backed candidates
+# (2026-11-13): every label word sits in its own band on the rebuilt S axis / the calm axis. No stillness- or light-family
+# words (stillness, serene, luminous, clarity, resonance, bright), the second tier of the Hush echo.
+NEW_LABELS = {
+    "sAxisLabel": "People Ring S (mod 7): About things (0) <-> About people (6)",
+    "aAxisLabel": "Mood Ring A (mod 7): Distressed (0) <-> Joyful (6)",
+    "S_axes": {
+        "0": "about objects and the physical world", "1": "about systems, machines, time and quantities",
+        "2": "about places, groups and everyday business", "3": "about facts and information, things and people mixed",
+        "4": "about shared life: work, school and news", "5": "about people you know and the roles they play",
+        "6": "about people and relationships: friends, family and community"},
+    "A_axes": {
+        "0": "distressed: afraid, hurt or angry", "1": "tense and upset", "2": "uneasy and a little worried",
+        "3": "neutral, neither good nor bad", "4": "at ease and mildly pleasant", "5": "content, warm and trusting",
+        "6": "joyful, glad and grateful"},
+    "S_rough_seeds": {"0": "Material", "1": "Mechanical", "2": "Mixed", "3": "Factual", "4": "Shared", "5": "Personal", "6": "Social"},
+    "A_rough_seeds": {"0": "Distressed", "1": "Tense", "2": "Uneasy", "3": "Neutral", "4": "At ease", "5": "Content", "6": "Joyful"},
+    "S_band_tones": {
+        "0": ["Material", "Solid", "Sturdy", "Raw", "Plain", "Rugged", "Hard"],
+        "1": ["Mechanical", "Structural", "Natural", "Precise", "Exact", "Electrical", "Industrial"],
+        "2": ["Mixed", "Assorted", "Functional", "Useful", "Manual", "Detailed", "Common"],
+        "3": ["Factual", "Technical", "Routine", "Literal", "Varied", "Busy", "Tangible"],
+        "4": ["Shared", "Human", "Practical", "Familial", "Informative", "Orderly", "General"],
+        "5": ["Personal", "Friendly", "Communal", "Cooperative", "Neighborly", "Mutual", "Hospitable"],
+        "6": ["Social", "Interpersonal", "Caring", "Loving", "Welcoming", "Devoted", "Civic"]},
+}
+
+# v24.4.2: feeling words left out of evolved cell and trace names when /newlabels is on: the stillness and light
+# families of the Hush echo (Meridian/Hope top words: stillness, quiet, clarity, luminous, resonance).
+HUSH_FEELINGS = {"serenity", "stillness", "resonance", "clarity", "radiance"}
+# v24.4.2: unpleasant and mixed feelings added to evolved names when /newlabels is on. The old list (written by Gemini in
+# the Torostat era) was almost all pleasant, so distressed cells were named "Hard-Hope" or "Useful-Love". Six of Plutchik's
+# eight basic emotions as used by the NRC Emotion lexicon (joy and trust are already in the list) plus common feeling
+# nouns; every one sits on the distressed side of the calm axis except surprise and anticipation (checked on GloVe).
+NEW_FEELINGS = ["fear", "anger", "sadness", "disgust", "surprise", "anticipation", "worry", "anxiety", "hurt", "shame",
+                "grief", "loneliness", "frustration", "dread", "doubt", "regret", "disappointment", "unease"]
+
+ENGINE_VERSION = "25.0.0"  # the bridge shows this at startup so a mismatched engine/bridge pair is easy to spot
 
 
 class ToroidalBrainEngine:
     # v21.3: how far each of the 10 trajectory steps really moves (1.0 = the old full-cell steps, which lapped the ring)
     TRAJECTORY_DAMPING = 0.1875
+    A_DEAD_ZONE = 0.5  # v24.3.4 (mood fix on): a scaled mood push weaker than this is no push at all
+    Z_DEAD_ZONE = 0.5  # v24.1.2 (Z follows the push): a Z velocity weaker than this moves Z not at all on the ¬R path
+    Z_CLIP = True      # v24.1.2 (Z follows the push): Z stops at 0 and 6 instead of wrapping (concrete talk wrapped to 6)
+    # v24.4.6: with /zpush, Z has walls; lab (lab/Z_REPORT.md): /zpush piled 50 of 84 turns at Z=6. Clearance alone
+    # spread Z over its whole range; the full S recipe (average push, usual zero, soft edges) bunched it in the middle.
+    # So /zpush now uses clearance + step 1 leaving Z alone; the other parts stay as lab options (None/"sum" = off).
+    Z_CLEARANCE = 0.5      # Z relaxes this share toward the middle before each turn
+    Z_PUSH_MODE = "sum"    # lab option: "mean" = the words' Z as an average (x Z_MEAN_WORDS)
+    Z_MEAN_WORDS = 1.5
+    Z_ZERO_RATE = None     # lab option: measure the push against this brain's usual Z push, adapting this fast
+    Z_SOFT_POWER = None    # lab option: outward Z steps slow near the ends by (1 - |u|^p)
+    Z_ENDS_FIX = True      # False = exactly v24.4.5 /zpush
 
     # v23.4.3 step 1 of real time: ONE clock for the whole engine. now() is the real time unless a clock was handed in
     # (ToroidalBrainEngine(..., clock=f) or the class attribute CLOCK, set before the brain is made, so the wake-up sleep
@@ -817,6 +1014,26 @@ class ToroidalBrainEngine:
         self._stem_cache = {}            # v24.1.1: same_stem results
         self.rhythm_on = os.environ.get("TORRENT_RHYTHM", "").strip() == "1"  # v24.0 daily rhythm (off by default)
         self.rhythm_offset = 0.0         # v24.0: hours this brain's night is shifted later (/rhythm +3)
+        self.z_follow_on = os.environ.get("TORRENT_ZPUSH", "").strip() == "1"  # v24.1.2 Z follows the push (off by default)
+        self.mood_fix_on = os.environ.get("TORRENT_MOODFIX", "").strip() == "1"  # v24.3.4 mood push fix (off by default)
+        self.s_fix_on = os.environ.get("TORRENT_SFIX", "").strip() == "1"  # v24.4.0 S learns from its real position (off by default)
+        self.s_new_on = os.environ.get("TORRENT_SNEW", "").strip() == "1"  # v24.4.1 rebuilt S axis (off by default)
+        self._s_mean_seeded = False      # v24.4.4: "usual" S push started from plain text yet?
+        self.z_level_resid = 0.0         # v24.4.6: Z clearance (with /zpush)
+        self.z_push_mean = 0.0           # v24.4.6: this brain's usual Z push (with /zpush)
+        self.s_level_resid = 0.0         # v24.4.4: S clearance keeps the fraction of a cell (like a_level_resid)
+        self.s_push_mean = 0.0           # v24.4.4: this brain's running average S push (S zero "usual")
+        self.s_blank_point = None        # v24.4.4: the S push plain text gives on this brain (/sfix measures against it)
+        self.a_edge = "wrap"             # v24.4.7: what the Mood Ring's landing cell does past its ends (wrap | walls | level); TORRENT_AEDGE
+        self.s_edge = "wrap"             # v24.4.4: what S does at its ends (walls | overstim | wrap); TORRENT_SEDGE
+        self.s_edge_wrapped = False      # v24.4.4: did the overstimulation wrap fire on the last turn
+        self.new_labels_on = False       # v24.4.2 new S/A labels (off by default; TORRENT_NEWLABELS=1 is applied after load)
+        self._label_stash = {}           # v24.4.2: unused cells' starting meanings from before the switch (this session)
+        self.last_exact_s = None         # v24.4.0: the last turn's exact (unwrapped) S position on the active path
+        self.mood_zero = "blank" if os.environ.get("TORRENT_MOODZERO", "").strip() == "blank" else "usual"  # v24.3
+        self.blank_point = None          # v24.3: the calm push plain text gives on this brain (mood zero = "blank")
+        self.speaker_push = {}           # v24.3: each person's usual calm push (measure only, like the tone sense)
+        self.last_vs_person = None       # v24.3: this message's push compared with that person's usual
         self.felt_usual = None           # v24.0: this brain's usual idle events per awake hour (None = not yet known)
         self.idle_focus = None  # v22.9: where the last walk ended (kept apart from last_topic, which is the user's)
         self.a_level_resid = 0.0         # v22.6.3: fraction of the calm level below one cell (kept between turns)
@@ -832,6 +1049,7 @@ class ToroidalBrainEngine:
         self.people = {}                 # v23.2: known people other than the caretaker: name -> {role, first_seen, last_seen, turns}
         self.current_speaker = None      # v23.2: who is talking this session (None = the caretaker); not saved
         self.reading = False             # v23.2: True while read() feeds a book line (a narrator, not a person)
+        self.peer_turn = False           # v24.2: True while peer_respond() feeds another brain's line (a dialogue)
         self.source_tags_on = os.environ.get("TORRENT_SOURCE_TAGS", "1").strip() != "0"
         self.nightmare_mode = False      # v22.3: switch off the engine's "lean up" rules (see lean_up_words)
         self.scratchpad = []
@@ -939,6 +1157,9 @@ class ToroidalBrainEngine:
         self.amygdala_on = os.environ.get("TORRENT_AMYGDALA", "").strip() != "0"    # v22.11
         self.negation_v2 = os.environ.get("TORRENT_NEGATION", "").strip() != "0"    # v23.3.3 (0 = the v23.3.2 rules)
         self.last_tone, self.speaker_tone = None, {}  # v23.4.1 tone sense (measured only)
+        self.trust = {}  # v24.6 trust v1 (measured only): name -> good/bad experience counts, open promise
+        self.together_weights = {}  # v25.0 connection v1 (measured only): word -> together (+1) .. alone (-1), starts 0
+        self.together_level = 0.0   # v25.0: how together the brain is right now (-1 alone .. +1 with someone)
         self.relation_verbs = os.environ.get("TORRENT_RELATION_VERBS", "").strip() != "0"  # v23.3.3
         self.calm_learning = "landing" if os.environ.get("TORRENT_CALM", "").strip().lower() == "landing" else "company"  # v22.10 (set before loading: the wake-up sleep uses it)
         fresh_brain = not os.path.exists(self.memory_file)
@@ -954,12 +1175,22 @@ class ToroidalBrainEngine:
         wake-up sleep on load, so that sleep follows them too)."""
         if os.environ.get("TORRENT_SOURCE_TAGS", "").strip() in ("0", "1"):
             self.source_tags_on = os.environ["TORRENT_SOURCE_TAGS"].strip() == "1"
+        if os.environ.get("TORRENT_MOODZERO", "").strip() in self.MOOD_ZERO_MODES:  # v24.3
+            self.mood_zero = os.environ["TORRENT_MOODZERO"].strip()
         for env, attr in (("TORRENT_NIGHTMARE", "nightmare_mode"), ("TORRENT_IDLE", "idle_on"),
                           ("TORRENT_MOODLEVEL", "mood_level_on"), ("TORRENT_LEVELS", "levels_on"),
-                          ("TORRENT_IDLE_MENU", "idle_menu_on"), ("TORRENT_RHYTHM", "rhythm_on")):
+                          ("TORRENT_IDLE_MENU", "idle_menu_on"), ("TORRENT_RHYTHM", "rhythm_on"),
+                          ("TORRENT_ZPUSH", "z_follow_on"), ("TORRENT_MOODFIX", "mood_fix_on"),
+                          ("TORRENT_SFIX", "s_fix_on"), ("TORRENT_SNEW", "s_new_on")):
             v = os.environ.get(env, "").strip()
             if v in ("0", "1"):
                 setattr(self, attr, v == "1")
+        if os.environ.get("TORRENT_SEDGE", "").strip() in self.S_EDGE_MODES:  # v24.4.4
+            self.s_edge = os.environ["TORRENT_SEDGE"].strip()
+        if os.environ.get("TORRENT_AEDGE", "").strip() in self.A_EDGE_MODES:  # v24.4.7
+            self.a_edge = os.environ["TORRENT_AEDGE"].strip()
+        if os.environ.get("TORRENT_NEWLABELS", "").strip() in ("0", "1"):  # v24.4.2 (rebuilds the starting meanings)
+            self.set_new_labels(os.environ["TORRENT_NEWLABELS"].strip() == "1")
 
     # =================================================================
     # UPGRADE 1: DYNAMIC IDENTITY TOKEN REGISTRY & SELF-QUERY DETECTOR
@@ -971,6 +1202,7 @@ class ToroidalBrainEngine:
     # =================================================================
     # v22.7 SOURCE TAGS: who made each link (source monitoring)
     # =================================================================
+    PEER_LEARN = 0.25  # v24.2.1: how strongly an untrusted other brain's line is learned (links, calm numbers); no cells
     TRUSTED_SOURCES = ("user", "note", "legacy", "book")  # v23.2: "book" = read(); "user:<name>" = a known person
 
     @staticmethod
@@ -1056,6 +1288,33 @@ class ToroidalBrainEngine:
         finally:
             self.reading = False
             self.set_wire_source(old_src)
+
+    def peer_respond(self, text, name, trusted=False):
+        """Front door (v24.2 brain-to-brain dialogue): a line said by ANOTHER BRAIN's voice. It is answered like a
+        person's line (it gets a reply, moves the brain, is remembered), with three differences: its links are tagged
+        "peer:<name>" (not trusted: another model wrote it), or "user:<name>" when trusted=True (teaching or therapy
+        sessions); it can't teach definitions or confirm a dream; and it can't name or rename this brain or introduce a
+        new person. The caller sets who is talking with whoami(name) first. Returns what respond() returns."""
+        src = f"user:{str(name).strip().lower()}" if trusted else f"peer:{str(name).strip().lower()}"
+        old_src, self.peer_turn = self.set_wire_source(src), True
+        try:
+            return self.respond(text)
+        finally:
+            self.peer_turn = False
+            self.set_wire_source(old_src)
+
+    @classmethod
+    def open_sharing_words(cls, other, memory_file, clock=None):
+        """Front door (v24.2): open a second brain that shares `other`'s word space in memory, so a dialogue partner
+        doesn't load the 50,000-word GloVe space a second time. Everything else (its memory file, wake-up sleep, its own
+        learned word meanings) loads exactly as usual."""
+        obj = cls.__new__(cls)
+        obj._borrow_words_from = other
+        try:
+            obj.__init__(glove_file="__borrowed__", memory_file=memory_file, max_glove_words=1, clock=clock)
+        finally:
+            obj._borrow_words_from = None
+        return obj
 
     # v23.4.1 /read: a whole text file, read in chunks with a full night between them (the diet Keel grew on: a whole
     # book in one sitting with no sleep would pile up words faster than the nightly fading can sort them).
@@ -1234,12 +1493,224 @@ class ToroidalBrainEngine:
         rec["n"] += 1
         rec["mean"] = round(rec["mean"] + (t - rec["mean"]) / min(rec["n"], 20), 4)  # the last ~20 messages
 
+    # =================================================================
+    # v24.6 TRUST v1 (measured only: nothing in the engine or bridge reads it to change learning or listening).
+    # Each person (and peer brain) gets good and bad experience counts, as in the beta reputation system (Josang &
+    # Ismail 2002): trust = (prior_good + good) / (prior_good + prior_bad + good + bad), 0..1. Old experiences fade
+    # (half after TRUST_HALF_DAYS). What counts (Matt's choices, 2026-11-14), after Mayer, Davis & Schoorman 1995:
+    #   benevolence = tone: a warm message +0.1, a cold one -0.1 (weighs least; peers a quarter of that)
+    #   integrity   = keeping your word: "I'll be back / brb / see you tomorrow / back in 10 min" and then writing again
+    #                 before the deadline +1; not back by then -1 (counted at the deadline)
+    #   integrity   = speak-ups: answered within 30 min +0.5; ignored for 2 h -0.5 (the speak habit's own timings)
+    # Where it starts: the caretaker a little trusting (0.60), everyone else neutral (0.50).
+    # Propensity (the brain's side) is shown as "right now": trust nudged by the brain's own mood (+-0.1).
+    # =================================================================
+    TRUST_HALF_DAYS = 14.0
+    TRUST_PRIOR_CARETAKER = (3.0, 2.0)
+    TRUST_PRIOR_OTHER = (2.0, 2.0)
+    TRUST_W_TONE, TRUST_W_PROMISE, TRUST_W_SPEAK = 0.1, 1.0, 0.5
+    TRUST_PEER_SHARE = 0.25
+    TRUST_MOOD_NUDGE = 0.1
+    TRUST_PROMISE_DEFAULT_H, TRUST_PROMISE_TOMORROW_H, TRUST_PROMISE_MIN_H = 24.0, 36.0, 2.0
+    _TRUST_NUM = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "ten": 10, "fifteen": 15,
+                  "twenty": 20, "thirty": 30, "few": 3, "couple": 2}
+    _TRUST_BACK_IN = re.compile(r"\b(?:back|return|on)\s+in\s+(?:about\s+|like\s+|a\s+)?(\d+|an?|one|two|three|four|five|ten|"
+                                r"fifteen|twenty|thirty|few|couple)\s*(?:of\s+)?(min|mins|minute|minutes|hr|hrs|hour|hours)\b")
+    _TRUST_TOMORROW = re.compile(r"\b(?:see|talk|speak|chat)\s+(?:to\s+|with\s+)?(?:you|ya|u)\s+(?:tomorrow|in the morning)\b|"
+                                 r"\b(?:be|come)\s+back\s+tomorrow\b|\btalk\s+tomorrow\b")
+    _TRUST_LATER = re.compile(r"\b(?:i'?ll|i will|will)\s+(?:be\s+(?:right\s+)?back|come\s+back|return)\b|\bbe\s+right\s+back\b|"
+                              r"\bbrb\b|\b(?:see|talk|speak|chat)\s+(?:to\s+|with\s+)?(?:you|ya|u)\s+(?:later|soon|tonight|in a bit)\b|"
+                              r"\bttyl\b")
+
+    def _trust_rec(self, name):
+        name = (name or "").strip().lower() or (self.caretaker_name() or "user")
+        rec = self.trust.setdefault(name, {"good": 0.0, "bad": 0.0, "t": round(self.now(), 1), "promise": None,
+                                           "counts": {}, "first": round(self.now(), 1)})
+        return name, rec
+
+    def _trust_decay(self, rec, now):
+        dt_days = max(0.0, now - rec.get("t", now)) / 86400.0
+        if dt_days > 0:
+            f = 0.5 ** (dt_days / self.TRUST_HALF_DAYS)
+            rec["good"], rec["bad"] = rec["good"] * f, rec["bad"] * f
+        rec["t"] = round(now, 1)
+
+    def trust_event(self, name, kind, amount, when=None):
+        """Front door (v24.6): add one experience. amount > 0 = good, < 0 = bad. kind is only a label for counts."""
+        now = self.now() if when is None else when
+        name, rec = self._trust_rec(name)
+        self._trust_decay(rec, now)
+        if amount > 0:
+            rec["good"] += amount
+        elif amount < 0:
+            rec["bad"] += -amount
+        c = rec.setdefault("counts", {})
+        key = kind + ("+" if amount > 0 else "-")
+        c[key] = c.get(key, 0) + 1
+
+    def _trust_prior(self, name):
+        return self.TRUST_PRIOR_CARETAKER if name == (self.caretaker_name() or "user") else self.TRUST_PRIOR_OTHER
+
+    def trust_value(self, name=None, when=None):
+        """Front door (v24.6): trust in this person, 0..1 (None = never met)."""
+        name = (name or self.speaker_name() or self.caretaker_name() or "user").strip().lower()
+        self.trust_check_promises(when)
+        rec = self.trust.get(name)
+        pa, pb = self._trust_prior(name)
+        if rec is None:
+            return round(pa / (pa + pb), 3)
+        now = self.now() if when is None else when
+        f = 0.5 ** (max(0.0, now - rec.get("t", now)) / 86400.0 / self.TRUST_HALF_DAYS)
+        g, b = rec["good"] * f, rec["bad"] * f
+        return round((pa + g) / (pa + pb + g + b), 3)
+
+    def trust_now(self, name=None, when=None):
+        """v24.6: trust nudged by the brain's own mood right now (a distressed brain is less open)."""
+        t = self.trust_value(name, when)
+        v = self.valence() if self.levels_on and hasattr(self, "valence") else 0.0
+        return round(max(0.0, min(1.0, t + self.TRUST_MOOD_NUDGE * (v or 0.0))), 3)
+
+    def trust_check_promises(self, when=None):
+        """Promises whose deadline has passed without a message count as broken, at the deadline."""
+        now = self.now() if when is None else when
+        for name, rec in self.trust.items():
+            pr = rec.get("promise")
+            if pr and now > pr["due"]:
+                rec["promise"] = None
+                self.trust_event(name, "promise", -self.TRUST_W_PROMISE, when=pr["due"])
+                rec.setdefault("log", []).append({"t": round(pr["due"], 1), "promise": "broken", "said": pr["said"]})
+                rec["log"] = rec["log"][-10:]
+
+    def _trust_promise_in(self, text):
+        """Hours until a promise in this message is due, or None."""
+        low = (text or "").lower().replace("’", "'")
+        m = self._TRUST_BACK_IN.search(low)
+        if m:
+            n = m.group(1)
+            n = float(n) if n.isdigit() else float(self._TRUST_NUM.get(n, 1))
+            hours = n if m.group(2).startswith("h") else n / 60.0
+            return max(self.TRUST_PROMISE_MIN_H, 3.0 * hours)
+        if self._TRUST_TOMORROW.search(low):
+            return self.TRUST_PROMISE_TOMORROW_H
+        if self._TRUST_LATER.search(low):
+            return self.TRUST_PROMISE_DEFAULT_H
+        return None
+
+    def note_trust_turn(self, text):
+        """v24.6: a message from the current speaker: keeps an open promise, counts the tone, opens a new promise."""
+        now = self.now()
+        self.trust_check_promises(now)
+        peer = bool(getattr(self, "peer_turn", False))
+        name, rec = self._trust_rec(self.speaker_name())
+        pr = rec.get("promise")
+        if pr and now <= pr["due"]:
+            rec["promise"] = None
+            self.trust_event(name, "promise", self.TRUST_W_PROMISE, when=now)
+            rec.setdefault("log", []).append({"t": round(now, 1), "promise": "kept", "said": pr["said"]})
+            rec["log"] = rec["log"][-10:]
+        word = self.tone_word(self.last_tone)
+        if word in ("warm", "cold"):
+            w = self.TRUST_W_TONE * (self.TRUST_PEER_SHARE if peer else 1.0)
+            self.trust_event(name, "tone", w if word == "warm" else -w, when=now)
+        if not peer:  # a peer brain's lines are the voice's, not promises
+            hours = self._trust_promise_in(text)
+            if hours is not None:
+                rec["promise"] = {"made": round(now, 1), "due": round(now + hours * 3600.0, 1), "said": (text or "")[:80]}
+
+    def trust_status(self, name):
+        name = (name or "").strip().lower()
+        t = self.trust_value(name)
+        rec = self.trust.get(name) or {}
+        c = rec.get("counts", {})
+        bits = [f"{k[:-1]} {c.get(k[:-1] + '+', 0)}+/{c.get(k[:-1] + '-', 0)}-" for k in ("promise+", "speak+", "tone+")
+                if c.get(k[:-1] + "+") or c.get(k[:-1] + "-")]
+        pr = rec.get("promise")
+        open_p = f", promise open ({max(0, (pr['due'] - self.now()) / 3600):.0f} h left)" if pr else ""
+        return f", trust {t:.2f}" + (f" ({', '.join(bits)})" if bits else "") + open_p
+
+    # =================================================================
+    # v25.0 CONNECTION v1 (measured only: nothing reads it to change the torus, learning or the voice).
+    # Each word learns a "together <-> alone" number (-1..+1) from when the brain actually meets it, the way calm
+    # numbers learn from their company. It starts at 0 for every word: no human rating set measures "felt with someone
+    # vs alone", so the brain builds it from its own life. A moment's togetherness (Matt's choices, 2026-11-14):
+    #   a person's message = trust in them right now (0..1), so a distrusted person feels less "with"
+    #   another brain in a /dialogue = the same, at a quarter of the learning rate (like peer words)
+    #   idle time = alone (-1) for the words the walk visits; an ignored speak-up = alone, a bit stronger
+    #   sleep and book reading = neither
+    # Each night pulls every number a little back toward 0, so one long night alone can't make every word "lonely".
+    # =================================================================
+    TOGETHER_RATE = 0.05          # share of the gap to the moment's togetherness a word closes per meeting
+    TOGETHER_IGNORED = 1.25       # an ignored speak-up's words: alone, a bit stronger than plain idle
+    TOGETHER_HOME_RATE = 0.05     # share of the gap to 0 closed per full night
+    TOGETHER_LEVEL_TURN = 0.5     # the level moves this share of the way to a message's togetherness
+    TOGETHER_LEVEL_IDLE = 0.02    # ...and this share toward alone per idle step
+
+    def _together_learn(self, words, m, rate):
+        for w in words:
+            if not w or w in self.stop_words:
+                continue
+            old = self.together_weights.get(w, 0.0)
+            self.together_weights[w] = round(max(-1.0, min(1.0, old + rate * (m - old))), 4)
+
+    def learn_together_turn(self, words, peer=False):
+        """v25.0: the words of a message from someone: they move toward how together the moment feels."""
+        if getattr(self, "reading", False):
+            return None
+        m = self.trust_now(self.speaker_name()) if hasattr(self, "trust_now") else 0.5
+        self._together_learn(words, m, self.TOGETHER_RATE * (self.TRUST_PEER_SHARE if peer else 1.0))
+        self._together_turn_words = [w for w in words if w in self.together_weights]
+        self.together_level = round(self.together_level + self.TOGETHER_LEVEL_TURN * (m - self.together_level), 4)
+        return m
+
+    def _idle_visit(self, w):
+        """An idle walk visits a word: counted for idle (as before) and, v25.0, learned as a moment alone."""
+        self.idle_visits[w] = self.idle_visits.get(w, 0.0) + 1.0
+        self._together_learn([w], -1.0, self.TOGETHER_RATE)
+        self.together_level = round(self.together_level + self.TOGETHER_LEVEL_IDLE * (-1.0 - self.together_level), 4)
+
+    def together_pull_home(self, depth):
+        rate, moved = self.TOGETHER_HOME_RATE * depth, 0
+        for w, old in list(self.together_weights.items()):
+            new = round(old * (1.0 - rate), 4)
+            if abs(new) < 1e-4:
+                del self.together_weights[w]
+            else:
+                self.together_weights[w] = new
+            moved += 1
+        return moved
+
+    def together_word(self, v):
+        return "together" if v >= 0.15 else "alone" if v <= -0.15 else "in between"
+
+    def connection_status(self, word=None):
+        """Front door (v25.0): one word's number, or the level and the most together / most alone words."""
+        if word:
+            w = word.strip().lower()
+            if w not in self.together_weights:
+                return f"'{w}': 0.00 (not met with anyone or alone yet)"
+            v = self.together_weights[w]
+            return f"'{w}': {v:+.2f} ({self.together_word(v)})"
+        tw = self.together_weights
+        top = sorted(tw.items(), key=lambda kv: -kv[1])[:8]
+        low = sorted(tw.items(), key=lambda kv: kv[1])[:8]
+        lines = [f"Together level now {self.together_level:+.2f} ({self.together_word(self.together_level)}); "
+                 f"{len(tw)} words have a number ({sum(1 for v in tw.values() if v > 0)} together side, "
+                 f"{sum(1 for v in tw.values() if v < 0)} alone side)"]
+        if top and top[0][1] > 0:
+            lines.append("Most together: " + ", ".join(f"{w} {v:+.2f}" for w, v in top if v > 0))
+        if low and low[0][1] < 0:
+            lines.append("Most alone: " + ", ".join(f"{w} {v:+.2f}" for w, v in low if v < 0))
+        return lines
+
     def people_status(self):
         care = self.caretaker_name() or "(none)"
 
         def tone_txt(name):
             rec = self.speaker_tone.get(name)
-            return f", tone {self.tone_word(rec['mean'])} {rec['mean']:+.2f} over {rec['n']} msgs" if rec else ""
+            sp = self.speaker_push.get(name)  # v24.3 (measure only)
+            push = f", usual calm push {sp['mean']:+.2f}" if sp and sp.get("n") else ""
+            return (f", tone {self.tone_word(rec['mean'])} {rec['mean']:+.2f} over {rec['n']} msgs" if rec else "") + push \
+                + self.trust_status(name)  # v24.6
         lines = [f"caretaker: {care}" + tone_txt(care) + ("  <- talking" if not self.current_speaker else "")]
         for n, p in sorted(self.people.items()):
             lines.append(f"{n} ({p.get('role', 'known')}, {p.get('turns', 0)} turns{tone_txt(n)})" + ("  <- talking" if n == self.current_speaker else ""))
@@ -1313,6 +1784,8 @@ class ToroidalBrainEngine:
             val = str(self.user_profile.get(key, "")).strip().lower()
             if val:
                 id_set.add(val)
+                if " " in val:  # v24.3.1: a two-word name ("Copy X") is known by its first word in messages
+                    id_set.add(val.split()[0])
         if self.dialogue_partner_name:
             id_set.add(self.dialogue_partner_name.strip().lower())
         id_set.update(self.people)  # v23.2
@@ -1502,7 +1975,7 @@ class ToroidalBrainEngine:
         if not self.levels_on:
             return None
         return {"arousal": round(self.arousal, 3), "valence": self.valence(), "novelty": round(self.novelty, 3),
-                "sleep": self.sleep_pressure_level()}
+                "sleep": self.sleep_pressure_level(), "zero": self.mood_zero, "vsPerson": self.last_vs_person}
 
     def levels_status(self):
         lv = self.levels()
@@ -1685,8 +2158,10 @@ class ToroidalBrainEngine:
             return None
         last = M["choices"][-1] if M["choices"] else None
         doing = "asleep" if M["asleep_since"] is not None else (last["option"] if last else "settling")
-        return {"doing": doing, "word": M["st"].get("cur") if M["path"] else None, "minutes": round(M["t"], 1),
-                "choices": len(M["choices"]), "new": [c["option"] for c in (new or [])]}
+        word = M["st"].get("cur") if M["path"] else None
+        return {"doing": doing, "word": word, "minutes": round(M["t"], 1),
+                "choices": len(M["choices"]), "new": [c["option"] for c in (new or [])],
+                "calm": round(self._idle_calm(word), 2) if word else None}  # v24.3.1: for the face (a tense walk frowns)
 
     def idle_path_text(self, rec=None):
         """Front door (v22.9): the walk as text. "->" follows a link; "~>" is a leap to a word it resembled (no link)."""
@@ -1831,7 +2306,7 @@ class ToroidalBrainEngine:
             self.wire_concepts(src, nxt, amount=self.IDLE_LINK, source="idle")
         if not link_before and nxt in self.assoc_graph.get(src, {}):
             new_links.append(f"{src}+{nxt}")
-        self.idle_visits[nxt] = self.idle_visits.get(nxt, 0.0) + 1.0
+        self._idle_visit(nxt)
         if i % 3 == 2 and len(path) >= 3:  # an old idea meets a new one
             far = path[-3]
             if (far != nxt and nxt not in self.assoc_graph.get(far, {}) and far in self.vectors and nxt in self.vectors
@@ -1904,6 +2379,287 @@ class ToroidalBrainEngine:
         return (self.idle_on and self.levels_on and self.idle_menu_on and not self.reading
                 and self.last_turn_time is not None and (now - self.last_turn_time) / 60.0 >= self.IDLE_MIN_GAP)
 
+    # ---- v24.3 mood zero: what "usual" means for the mood (per brain) ----
+    MOOD_ZERO_MODES = ("usual", "blank")
+    SPEAKER_PUSH_WINDOW = 50  # a person's usual push follows about their last 50 messages (measure only)
+    BLANK_SENTENCES = (  # plain, ordinary-length lines with no feeling in them: the "blank" the mood is zeroed against
+        "The train leaves the north station at noon.",
+        "The report has four sections and two tables.",
+        "Water boils at one hundred degrees at sea level.",
+        "The meeting moved to the room on the second floor.",
+        "The package was delivered on Tuesday afternoon.",
+        "The road runs east along the river for ten miles.",
+        "The file is saved in the folder on the desk.",
+        "The store opens at nine and closes at six.",
+        "There are three chairs and a table in the kitchen.",
+        "The bus stops at the corner every twenty minutes.",
+        "The book has twelve chapters and a short index.",
+        "The car is parked behind the building near the gate.",
+        "The form needs a name, a date and an address.",
+        "The window faces the street on the west side.",
+        "The box holds pens, paper and a small ruler.",
+        "The bridge crosses the river south of the town.",
+    )
+
+    def _plain_calm_push(self, text):
+        """v24.3: the calm push one message would give, computed like compute_signed_forces but with no side effects
+        (nothing learned, no velocity or lean moved). Steady-state value: (sum of calm numbers) / 2, capped at +-2.5."""
+        tokens = self.clean_tokens(text)
+        concepts, _ = self.extract_concepts(text, tokens)
+        raw_a = 0.6 if "!" in text else 0.0
+        for w in concepts:
+            raw_a += self.word_weights.get(w, 0.0) or (self.axis_weight(self.vectors[w], "A") if w in self.vectors else 0.0)
+        return max(-2.5, min(2.5, raw_a / 2.0))
+
+    S_DEAD_ZONE = 0.5  # v24.4.4: with /sfix on, an S push weaker than this (after zeroing) is no push
+    S_CLEARANCE = 0.5  # v24.4.4: share of S's distance from the middle that clears before each turn (walls/overstim)
+    S_PUSH_MODE = "mean"    # v24.4.4 lab: "sum" (as before) or "mean" (the words' average x S_MEAN_WORDS, with /sfix on)
+    S_MEAN_WORDS = 1.5     # v24.4.4 lab: the average counts like this many words (sum/2 of a 3-word message)
+    S_SOFT_EDGES = True    # v24.4.4 lab: outward S steps slow near the ends by (1 - u^2), like the mood's tanh edges
+    S_SOFT_POWER = 6.0     # v24.4.4 lab: softness (1 - |u|^p); higher p = edges stay easy to reach until very close
+    S_OVERSTIM_AT = 5.0    # v24.4.4 lab: with soft edges, overstim fires on an outward step from here while wound up
+    S_ZERO_RATE = 0.3      # v24.4.4 lab: how fast "usual" S adapts (None = MOOD_LEAN_RATE); seeded from plain text if set
+    S_ZERO_MODE = "usual"  # v24.4.4: what the S push is measured against with /sfix on: usual | blank | none
+
+    def _plain_social_push(self, text):
+        """v24.4.4: the S push one message would give (as compute_signed_forces, no side effects): pronoun and "!"
+        bonuses plus the words' social numbers, / 2, capped at +-2.5."""
+        tokens = self.clean_tokens(text)
+        concepts, _ = self.extract_concepts(text, tokens)
+        raw_s = 0.6 if "!" in text else 0.0
+        for t in tokens:
+            if t in ("we", "us", "our", "together", "you", "share", "connect", "meet", "well"):
+                raw_s += 0.7
+            elif t in ("alone", "hide", "guarded", "myself"):
+                raw_s -= 0.8
+        ws = [self.social_weights.get(w, 0.0) or (self.axis_weight(self.vectors[w], "S") if w in self.vectors else 0.0)
+              for w in concepts]
+        if self._s_ends() and self.S_PUSH_MODE == "mean" and ws:
+            raw_s += self.S_MEAN_WORDS * sum(ws) / len(ws)
+        else:
+            raw_s += sum(ws)
+        return max(-2.5, min(2.5, raw_s / 2.0))
+
+    def _plain_social_push_mean(self):
+        """v24.4.4 lab: the plain-text S push under the current push mode (for seeding "usual")."""
+        return sum(self._plain_social_push(t) for t in self.BLANK_SENTENCES) / len(self.BLANK_SENTENCES)
+
+    def calibrate_s_blank(self):
+        """Front door (v24.4.4): this brain's S zero: the average S push of BLANK_SENTENCES (plain facts)."""
+        pushes = [self._plain_social_push(t) for t in self.BLANK_SENTENCES]
+        self.s_blank_point = round(sum(pushes) / len(pushes), 3)
+        return self.s_blank_point
+
+    def calibrate_blank(self):
+        """Front door (v24.3): measure this brain's neutral point: the average calm push of BLANK_SENTENCES with the
+        brain's current calm numbers. Re-measured at every wake-up sleep, so it follows the slow warming or cooling of
+        the brain's words, but never one person's warmth. Returns the new point."""
+        pushes = [self._plain_calm_push(t) for t in self.BLANK_SENTENCES]
+        self.blank_point = round(sum(pushes) / len(pushes), 3)
+        return self.blank_point
+
+    def set_mood_zero(self, mode):
+        """Front door (v24.3): "usual" = the mood is measured against the brain's running average push (v22.6 to v24.2:
+        whoever talks most sets "normal"); "blank" = against what plain text does on this brain. Saved per brain."""
+        mode = str(mode).strip().lower()
+        if mode not in self.MOOD_ZERO_MODES:
+            raise ValueError(f"mood zero must be one of {self.MOOD_ZERO_MODES}")
+        self.mood_zero = mode
+        if mode == "blank":
+            self.calibrate_blank()
+        return self.mood_zero
+
+    def mood_zero_point(self):
+        """The number the mood push is measured against right now."""
+        if self.mood_zero == "blank":
+            if self.blank_point is None:
+                self.calibrate_blank()
+            return self.blank_point
+        return self.a_push_mean
+
+    def mood_zero_status(self):
+        if self.mood_zero == "blank":
+            return (f"blank (plain text = {self.mood_zero_point():+.2f}; the old usual lean, kept for reference, "
+                    f"is {self.a_push_mean:+.2f})")
+        return f"usual (the brain's running average push, {self.a_push_mean:+.2f})"
+
+    def _note_speaker_push(self):
+        """v24.3 (measure only): how this message's calm push compares with this person's own usual push."""
+        if self.reading or self.peer_turn:
+            self.last_vs_person = None
+            if not self.peer_turn:
+                return
+        who = self.current_speaker or (self.caretaker_name() or "user")
+        rec = self.speaker_push.setdefault(who, {"mean": 0.0, "n": 0})
+        self.last_vs_person = round(self.vel_a - rec["mean"], 3) if rec["n"] else None
+        rec["n"] += 1
+        rec["mean"] = round(rec["mean"] + (self.vel_a - rec["mean"]) / min(rec["n"], self.SPEAKER_PUSH_WINDOW), 4)
+
+    # ---- v24.1.2 Z follows the push (test switch, per brain) ----
+    def set_z_follow(self, on):
+        """Front door (v24.1.2): on the active (¬R) path, Z moves with the message's own Z push instead of climbing
+        every turn and resetting after 6 (the "turn clock"). Saved per brain; off = exactly v24.1.1."""
+        self.z_follow_on = bool(on)
+        return self.z_follow_on
+
+    # ---- v24.3.4 mood push fix (test switch, per brain) ----
+    def set_mood_fix(self, on):
+        """Front door (v24.3.4): a weak mood push (|push| < A_DEAD_ZONE) moves the calm axis not at all, and step 1 doesn't
+        move A. Saved per brain; off = exactly v24.3.3."""
+        self.mood_fix_on = bool(on)
+        return self.mood_fix_on
+
+    # ---- v24.4.0 S wrap fix (test switch, per brain) ----
+    def set_s_fix(self, on):
+        """Front door (v24.4.0): social numbers learn from the turn's exact, unwrapped S position (clipped to -1..+1)
+        instead of the wrapped landing cell. v24.4.4: also measures the S push against plain text (S zero), with a
+        dead zone, and stops step 1 / the odd-S step from tilting S. Saved per brain; off = exactly v24.3.4."""
+        self.s_fix_on = bool(on)
+        return self.s_fix_on
+
+    # ---- v24.4.1 rebuilt S axis (test switch, per brain) ----
+    def set_s_new(self, on):
+        """Front door (v24.4.1): new words get their starting S weight from the socialness-fitted direction
+        ("about things" <-> "about people") instead of the old social/isolated poles. Words already known keep their
+        social numbers. Saved per brain; off = exactly v24.4.0."""
+        self.s_new_on = bool(on)
+        if self._s_ends():
+            self.calibrate_s_blank()  # v24.4.4: the axis changed, so plain text's S push did too
+            self._s_mean_seeded = False
+        return self.s_new_on
+
+    # ---- v24.4.4 the S edge ----
+    S_EDGE_MODES = ("walls", "overstim", "wrap")
+    OVERSTIM_AROUSAL = 0.5   # "wound up": arousal at or above this lets a push past "about people" wrap to withdrawal
+
+    def set_s_edge(self, mode):
+        """Front door (v24.4.4): what S does at its ends. walls (default) = stops at 0 and 6; overstim = wall, except
+        that past "about people" while wound up it wraps round to "about things"; wrap = the old ring (v24.4.3)."""
+        if mode in self.S_EDGE_MODES:
+            had_ends = self._s_ends()
+            self.s_edge = mode
+            if self._s_ends() and not had_ends:  # start "usual" S from plain text (it then adapts 30% a turn)
+                self._s_mean_seeded = False
+                self.s_level_resid = 0.0
+        return self.s_edge
+
+    A_EDGE_MODES = ("wrap", "walls", "level")
+
+    def set_a_edge(self, mode):
+        """Front door (v24.4.7): what the Mood Ring's CELL does at its ends. wrap = the old ring (one step past Joyful is
+        Distressed); walls = each step's A cell is the exact position clipped to 0..6; level = the landing cell's A is the
+        mood level's own cell (needs the levels; without them it acts like walls). The exact path, the mood level and
+        where the next turn starts are the same in all three: only the cell the reply is given changes."""
+        if mode in self.A_EDGE_MODES:
+            self.a_edge = mode
+        return self.a_edge
+
+    def _a_cell(self, x):
+        """v24.4.7: the Mood Ring cell for an exact A position."""
+        if getattr(self, "a_edge", "wrap") == "wrap":
+            return self.mod7(x)
+        return max(0, min(6, int(math.floor(x + 0.5))))
+
+    def _z_ends(self):
+        """v24.4.6: Z has walls (/zpush) and gets the ends treatment (average push, usual zero, soft edges, clearance)."""
+        return getattr(self, "z_follow_on", False) and self.Z_CLIP and self.Z_ENDS_FIX
+
+    def _z_step(self, pos, dz):
+        """v24.4.6: one flipped-path Z step with soft walls."""
+        if self._z_ends() and self.Z_SOFT_POWER is not None:
+            u = max(-1.0, min(1.0, (pos - 3.0) / 3.0))
+            if dz * u > 0:
+                dz = dz * (1.0 - abs(u) ** self.Z_SOFT_POWER)
+        return min(6.0, max(0.0, pos + dz))
+
+    def _s_ends(self):
+        """v24.4.4: S has ends (walls or overstim). With ends, S also needs: the push as an average over words, measured
+        against this brain's usual push (fast to adapt, seeded from plain text), a dead zone, no built-in tilt, soft
+        edges and clearance toward the middle (found in lab rounds 1-5: without them walls pile turns at one end)."""
+        return getattr(self, "s_edge", "wrap") in ("walls", "overstim")
+
+    def _s_step(self, pos, ds):
+        """v24.4.4: one S step. With soft edges (lab), an outward step slows near the ends by (1 - u^2); overstim then
+        fires on an outward step past S=5.5 while wound up (S can't get past 6 to wrap)."""
+        if not (self._s_ends() and self.S_SOFT_EDGES):
+            return self._s_edge(pos + ds)
+        u = max(-1.0, min(1.0, (pos - 3.0) / 3.0))
+        if ds * u > 0:
+            if (ds > 0 and pos >= self.S_OVERSTIM_AT and getattr(self, "s_edge", "walls") == "overstim" and getattr(self, "levels_on", False)
+                    and getattr(self, "arousal", 0.0) >= self.OVERSTIM_AROUSAL):
+                self.s_edge_wrapped = True
+                return 0.0  # withdrawal: round to "about things"
+            ds = ds * (1.0 - abs(u) ** self.S_SOFT_POWER)
+        return min(6.0, max(0.0, pos + ds))
+
+    def _s_edge(self, pos):
+        """v24.4.4: apply the S edge rule to an exact (unwrapped) S position."""
+        mode = getattr(self, "s_edge", "wrap")
+        if mode == "wrap" or 0.0 <= pos <= 6.0:
+            return pos
+        if pos < 0.0:
+            return 0.0
+        if (mode == "overstim" and getattr(self, "levels_on", False)
+                and getattr(self, "arousal", 0.0) >= self.OVERSTIM_AROUSAL):
+            self.s_edge_wrapped = True
+            return pos  # left past 6: its cell wraps round (mod 7) to the "about things" end
+        return 6.0
+
+    # ---- v24.4.2 new axis labels (test switch, per brain) ----
+    def lib(self, key):
+        """v24.4.2: the label table in use for this brain (NEW_LABELS for S and A when /newlabels is on)."""
+        if getattr(self, "new_labels_on", False) and key in NEW_LABELS:
+            return NEW_LABELS[key]
+        return BRAIN_LIBRARY[key]
+
+    def feeling_pool(self):
+        """v24.4.2: the feeling words evolved names are picked from (the Hush and light words left out with /newlabels on).
+        Names already given stay valid either way (is_valid_emotion_name still checks the full list)."""
+        if getattr(self, "new_labels_on", False):
+            return [w for w in self.core_emotion_pool if w not in HUSH_FEELINGS] + [w for w in NEW_FEELINGS if w not in self.core_emotion_pool]
+        return self.core_emotion_pool
+
+    def seed_cell_name(self, s, a):
+        """v24.4.2: a cell's two-word starting name, S label + A label (e.g. Social-Joyful, or Quiet-Grounded before)."""
+        return f"{self.lib('S_rough_seeds')[str(s)]}-{self.lib('A_rough_seeds')[str(a)]}"
+
+    def apply_label_set(self):
+        """v24.4.2: after the label switch changes (or a brain loads with it on): rebuild each cell's starting meaning,
+        give unused cells the new starting meaning and every never-renamed cell its new starting name. Cells the brain
+        has used keep their learned meaning; evolved names move to the new band words on their next visit; names
+        Matt gave are kept."""
+        old_coords = getattr(self, "coord_vectors", None) or {}
+        self.coord_vectors = self.build_coordinate_vectors()
+        for s in range(7):
+            for a in range(7):
+                for z in range(7):
+                    key = f"{s},{a},{z}"
+                    entry = self.cell_lexicon.get(key)
+                    if entry is None:
+                        continue
+                    seed = self.seed_cell_name(s, a)
+                    entry["seed_name"] = seed
+                    if not entry.get("custom") and entry.get("stage", 1) <= 1:
+                        entry["name"] = seed
+                    unused = not self.cortical_cells.get(key) and entry.get("visits", 0) == 0
+                    if unused or self.cell_centroids.get(key) == old_coords.get((s, a, z)):
+                        stash = self._label_stash
+                        if not self.new_labels_on and key in stash:
+                            self.cell_centroids[key] = stash.pop(key)  # back to exactly what it was before the switch
+                        else:
+                            if self.new_labels_on and key not in stash and key in self.cell_centroids:
+                                stash[key] = list(self.cell_centroids[key])
+                            self.cell_centroids[key] = list(self.coord_vectors[(s, a, z)])
+
+    def set_new_labels(self, on):
+        """Front door (v24.4.2): use the new Mood Ring (A) and People Ring (S) labels on this brain. Saved per brain;
+        off = exactly v24.4.1."""
+        on = bool(on)
+        if on != getattr(self, "new_labels_on", False):
+            self.new_labels_on = on
+            self.apply_label_set()
+        return self.new_labels_on
+
     # ---- v24.0 a sense of time, part 2: daily rhythm ----
     def set_rhythm(self, on):
         """Front door (v24.0): the daily rhythm on/off (saved per brain)."""
@@ -1943,14 +2699,23 @@ class ToroidalBrainEngine:
         RHYTHM_NIGHT_C (only reported when the rhythm is on)."""
         c = self.rhythm_c(when)
         return {"rhythm": self.rhythm_on, "offset": self.rhythm_offset, "hour": round(self.rhythm_hour(when), 2),
-                "c": round(c, 3), "night": bool(self.rhythm_on and c > self.RHYTHM_NIGHT_C)}
+                "c": round(c, 3), "night": bool(self.rhythm_on and c > self.RHYTHM_NIGHT_C),
+                "part": self.day_part(when)}
+
+    # v24.4.8: the part of the day by the brain's own clock (offset included). Night is the same span the voice was
+    # already told "night" (night-ness above RHYTHM_NIGHT_C, about 11 pm to 7 am); the rest is split like people do.
+    DAY_PARTS = ((7.0, "night"), (12.0, "morning"), (17.0, "afternoon"), (23.0, "evening"), (24.0, "night"))
+
+    def day_part(self, when=None):
+        h = self.rhythm_hour(when)
+        return next(name for end, name in self.DAY_PARTS if h < end)
 
     def rhythm_status(self, when=None):
         ts = self.time_sense(when)
         if not self.rhythm_on:
             return "off (/rhythm on)"
         off = f", night shifted {self.rhythm_offset:+g} h" if self.rhythm_offset else ""
-        return f"on ({'night' if ts['c'] >= 0.5 else 'daytime'} for it now, night-ness {ts['c']:.2f}{off})"
+        return f"on ({ts['part']} for it now, night-ness {ts['c']:.2f}{off})"  # v24.4.8: was night/daytime at 0.5
 
     def idle_urges(self, a, v, b, p, e, q, when=None):
         """v23.4: each option's urge as a list of (reason, amount); the urge is their sum plus the option's habit.
@@ -2183,7 +2948,7 @@ class ToroidalBrainEngine:
                         path.append(w)
                         calms.append(self._idle_calm(w))
                         st["cur"] = w
-                    self.idle_visits[w] = self.idle_visits.get(w, 0.0) + 1.0
+                    self._idle_visit(w)
                     log["episode"] = {"words": turn.get("words", [])[:4], "valence": turn.get("valence"),
                                       "speaker": turn.get("speaker")}
                     M.setdefault("say", []).append(("replay", [w] + [x for x in turn.get("words", [])[:3] if x != w],
@@ -2197,7 +2962,7 @@ class ToroidalBrainEngine:
                             if near in self.assoc_graph.get(st["cur"], {}):
                                 st["new_links"].append(f"{st['cur']}+{near}")
                                 M.setdefault("say", []).append(("leap", [st["cur"], near], self.SPEAK_ITEM["leap"]))
-                            self.idle_visits[near] = self.idle_visits.get(near, 0.0) + 1.0
+                            self._idle_visit(near)
                             st["jumps"].append(len(path))
                             path.append(near)
                             calms.append(self._idle_calm(near))
@@ -2281,6 +3046,20 @@ class ToroidalBrainEngine:
         vals = [float(r.get("valence") or 0.0) for r in self.recent_turns if (r.get("speaker") or "").lower() == name]
         return max(-1.0, min(1.0, sum(vals) / len(vals))) if vals else 0.0
 
+    SPEAK_COMMON_RANK = 10000  # v24.3.1: a word this common in English (GloVe rank) isn't worth wondering about aloud
+
+    def speak_word_is_new(self, w):
+        """v24.3.1: worth speaking up about as a new word? Not a common English word ("asked", rank 477, was one) and
+        not another form of a word the brain already knows ("asking" when it knows "asked", "storms" when it knows
+        "storm"). Rare words, names and words GloVe never had (like "ocarina") still count."""
+        rank = self.word_rank.get(w)
+        if rank is not None and rank <= self.SPEAK_COMMON_RANK:
+            return False
+        for known in self.experienced_words:
+            if known != w and known[:3] == w[:3] and self.same_stem(known, w):
+                return False
+        return True
+
     def _speak_walk_mood(self, calms):
         if len(calms) < 2:
             return ""
@@ -2297,8 +3076,8 @@ class ToroidalBrainEngine:
                 if (r.get("speaker") or "").lower() != person:
                     continue
                 for w in r.get("words", []):
-                    if len(w) >= 4 and self.is_provisional_word(w):  # seen once (v24.1: not taught words or its own vocabulary)
-                        cands.append(("word", [w], self.SPEAK_ITEM["word"]))
+                    if len(w) >= 4 and self.is_provisional_word(w) and self.speak_word_is_new(w):  # seen once (v24.1: not
+                        cands.append(("word", [w], self.SPEAK_ITEM["word"]))  # taught words or its own vocabulary)
         calms, path = M["calms"], M["path"]
         if len(calms) >= 2 and calms[0] < self.IDLE_TENSE and calms[-1] > 0:
             cands.append(("settled", [path[0], path[-1]], self.SPEAK_ITEM["settled"]))
@@ -2335,9 +3114,14 @@ class ToroidalBrainEngine:
         elif mins >= self.SPEAK_IGNORED_MIN and not sp.get("ignored"):
             sp["ignored"] = True  # still counts as unanswered (n = 1) until they write
             outcome = (0.0, -1.0)
+            self._together_learn((sp.get("packet") or {}).get("words") or [], -1.0,
+                                 self.TOGETHER_RATE * self.TOGETHER_IGNORED)  # v25.0: spoke into an empty room
         else:
             return None
         self._idle_learn_habit("speak", *outcome)
+        if outcome[1] != 0.0:  # v24.6 trust: answered soon = good, ignored = bad (the in-between counts as neither)
+            who = (sp.get("packet") or {}).get("person") or self.caretaker_name()
+            self.trust_event(who, "speak", self.TRUST_W_SPEAK * outcome[1], when=now)
         return round(mins, 1)
 
     def _idle_menu_finish(self, now):
@@ -2714,7 +3498,7 @@ class ToroidalBrainEngine:
         """v21.3: is this NAME also an ordinary word? The brain's own name: GloVe or the engine's vocabulary ('hope',
         'drift'). A person's name (the user, a dialogue partner): only the engine's own vocabulary, because GloVe is full
         of people's names ('matt' is word #4042) and a person's name is rarely meant as a word."""
-        bot = str(self.user_profile.get("bot_name", "")).strip().lower()
+        bot = (str(self.user_profile.get("bot_name", "")).strip().lower().split() or [""])[0]  # v24.3.1: first word
         pending = str(self.user_profile.get("pending_bot_name", "")).strip().lower()
         if n in (bot, pending):
             return self.is_ordinary_word(n)
@@ -2818,9 +3602,22 @@ class ToroidalBrainEngine:
         return (w.isalpha() and len(w) >= 2 and w not in self.stop_words and w not in self.negation_tokens
                 and w not in self.generic_hubs and w not in self.noise_words)
 
-    def register_bot_name(self, chosen_name):
-        clean_cap = chosen_name.strip().capitalize()
-        clean_low = clean_cap.lower()
+    @staticmethod
+    def name_as_written(chosen, display=None):
+        """v24.3.1: how a name is shown. The written form wins ("Copy X", "CopyX", "McKay"); a plain lowercase name gets
+        a capital first letter as before ("gyre" -> "Gyre"). Before, "CopyX" became "Copyx"."""
+        d = re.sub(r"\s+", " ", (display or chosen or "").strip())
+        if not d:
+            return d
+        if not display and not any(ch.isupper() for ch in d[1:]):
+            return d.capitalize()
+        return d[0].upper() + d[1:]
+
+    def register_bot_name(self, chosen_name, display=None):
+        """display (v24.3.1): the name as written, up to two words ("Copy X"). The brain still knows itself by the
+        first word in messages (names are single words inside the engine); the whole name is what's shown and said."""
+        clean_cap = self.name_as_written(chosen_name, display)
+        clean_low = clean_cap.lower().split()[0]
         self.user_profile["bot_name"] = clean_cap
         self.user_profile["pending_bot_name"] = ""
         self.user_profile["pending_name_origin"] = ""
@@ -3661,9 +4458,17 @@ class ToroidalBrainEngine:
             if depth:
                 faded = self.fade_rejections(depth)  # v23.1
                 report.append(f"Rejection fading (depth {depth:.2f}): {faded} rejected pairs fully released.")
+            if depth and self.together_weights:  # v25.0 connection: back toward 0 a little each night
+                report.append(f"Connection homeostasis (depth {depth:.2f}): {self.together_pull_home(depth)} together/alone numbers relaxed toward 0.")
             if self.calm_learning == "company" and depth:
                 moved = self.calm_pull_home(depth)
                 report.append(f"Calm Homeostasis (depth {depth:.2f}): {moved} calm numbers relaxed toward their meaning.")
+            if self.mood_zero == "blank":  # v24.3: re-zero the mood against plain text with tonight's calm numbers
+                old = self.blank_point
+                new = self.calibrate_blank()
+                if self._s_ends():
+                    self.calibrate_s_blank()  # v24.4.4
+                report.append(f"Mood zero (blank): {'set to' if old is None else f'{old:+.2f} ->'} {new:+.2f}.")
         finally:
             self.sleep_depth = None
         # v22.1: remember this sleep (the bridge can tell the model what really happened)
@@ -3732,7 +4537,7 @@ class ToroidalBrainEngine:
 
     def compute_signed_forces(self, user_text, tokens, eval_concepts):
         raw_s, raw_a, raw_z, drivers = 0.0, 0.0, 0.0, []
-        word_set = set(tokens)
+        word_set = set(tokens) - set(getattr(self, "_turn_name_tokens", set()) or set())  # v24.4.6: names aren't cue words
         if "!" in user_text:
             raw_s += 0.6
             raw_a += 0.6
@@ -3754,12 +4559,15 @@ class ToroidalBrainEngine:
             elif t in ("alone", "hide", "guarded", "myself"):
                 raw_s -= 0.8
 
+        s_words, z_words = [], []  # v24.4.4 / v24.4.6: the words' S and Z weights (for the average push)
         for w in eval_concepts:
             wt_a = self.word_weights.get(w, 0.0) or (self.axis_weight(self.vectors[w], "A") if w in self.vectors else 0.0)
             wt_s = self.social_weights.get(w, 0.0) or (self.axis_weight(self.vectors[w], "S") if w in self.vectors else 0.0)
             wt_z = self.epistemic_weights.get(w, 0.0) or (self.axis_weight(self.vectors[w], "Z") if w in self.vectors else 0.0)
             raw_a += wt_a
             raw_s += wt_s
+            s_words.append(wt_s)
+            z_words.append(wt_z)
             raw_z += wt_z
             if abs(wt_a) >= 0.2 or abs(wt_s) >= 0.2 or abs(wt_z) >= 0.2:
                 drivers.append(f"{w}(S:{wt_s:+.1f},A:{wt_a:+.1f},Z:{wt_z:+.1f})")
@@ -3775,6 +4583,10 @@ class ToroidalBrainEngine:
                 if abs(wt_a) >= 0.2:
                     drivers.append(f"not_{w}(A:{-self.NEG_SHIFT * wt_a:+.1f})")
 
+        if self._z_ends() and self.Z_PUSH_MODE == "mean" and z_words:
+            raw_z = raw_z - sum(z_words) + self.Z_MEAN_WORDS * (sum(z_words) / len(z_words))  # v24.4.6
+        if self._s_ends() and self.S_PUSH_MODE == "mean" and s_words:
+            raw_s = raw_s - sum(s_words) + self.S_MEAN_WORDS * (sum(s_words) / len(s_words))  # v24.4.4 lab
         blended_s = 0.35 * self.vel_s + 0.65 * (raw_s / 2.0)
         blended_a = 0.35 * self.vel_a + 0.65 * (raw_a / 2.0)
         blended_z = 0.35 * self.vel_z + 0.65 * (raw_z / 1.8)
@@ -3787,11 +4599,32 @@ class ToroidalBrainEngine:
         force_z = max(-2, min(2, int(round(self.vel_z)))) or (1 if blended_z >= 0 else -1)
         drivers.append(f"vel3D(vS:{self.vel_s:+.2f},vA:{self.vel_a:+.2f},vZ:{self.vel_z:+.2f})")
         self.turn_counter += 1
+        self._note_speaker_push()  # v24.3 (measure only)
+        if self._s_ends():  # v24.4.4: with ends, S is measured against its usual push, weak pushes are none
+            if self.s_blank_point is None:
+                self.calibrate_s_blank()
+            if self.S_ZERO_RATE is not None and not getattr(self, "_s_mean_seeded", False):
+                self.s_push_mean, self._s_mean_seeded = self._plain_social_push_mean(), True  # v24.4.4 lab
+            zs = {"blank": self.s_blank_point, "usual": self.s_push_mean}.get(self.S_ZERO_MODE, 0.0)
+            rate = self.S_ZERO_RATE if self.S_ZERO_RATE is not None else self.MOOD_LEAN_RATE
+            self.s_push_mean = round(self.s_push_mean + rate * (self.vel_s - self.s_push_mean), 4)
+            dev_s = self.vel_s - zs
+            if abs(zs) < 2.4:
+                dev_s = dev_s * 2.5 / ((2.5 - zs) if dev_s >= 0 else (2.5 + zs))
+            force_s = 0 if abs(dev_s) < self.S_DEAD_ZONE else (max(-2, min(2, int(round(dev_s)))) or (1 if dev_s > 0 else -1))
+            drivers.append(f"sZero({self.S_ZERO_MODE} {zs:+.2f}, push {force_s:+d})")
         if self.mood_active():  # v22.6: push relative to this brain's own usual lean (keeps the +-1 minimum)
-            dev = self.vel_a - self.a_push_mean
+            zero = self.mood_zero_point()  # v24.3: the usual lean, or this brain's plain-text point ("blank")
+            dev = self.vel_a - zero
+            if self.mood_zero == "blank" and abs(zero) < 2.4:
+                # v24.3: each side of zero gets the full scale. Plain text sits near +1 on GloVe's warm tilt, so with the
+                # push capped at +2.5 even the warmest line was only +1.4 above zero and never got a +2 push.
+                dev = dev * 2.5 / ((2.5 - zero) if dev >= 0 else (2.5 + zero))
             self.a_push_mean = round(self.a_push_mean + self.MOOD_LEAN_RATE * (self.vel_a - self.a_push_mean), 4)
             force_a = max(-2, min(2, int(round(dev)))) or (1 if dev >= 0 else -1)
-            drivers.append(f"moodLevel(lean {self.a_push_mean:+.2f}, push {force_a:+d})")
+            if getattr(self, "mood_fix_on", False) and abs(dev) < self.A_DEAD_ZONE:
+                force_a = 0  # v24.3.4: a weak push is no push (it used to be forced to a full +-1)
+            drivers.append(f"moodLevel({'blank' if self.mood_zero == 'blank' else 'lean'} {zero:+.2f}, push {force_a:+d})")
         return force_s, force_a, force_z, drivers
 
     def run_dual_trajectories(self, user_text, tokens, concepts):
@@ -3812,6 +4645,16 @@ class ToroidalBrainEngine:
                 level = 3 + (self.seed_a + self.a_level_resid - 3) * (1 - self.MOOD_CLEARANCE)
                 self.seed_a = int(math.floor(level + 0.5))
                 self.a_level_resid = round(level - self.seed_a, 4)
+        if self._s_ends():
+            # v24.4.4 S clearance: like the mood's, S relaxes toward the middle before this turn's push, so it shows
+            # recent talk rather than the running total of every push (which piled turns against one wall)
+            level = 3 + (self.seed_s + self.s_level_resid - 3) * (1 - self.S_CLEARANCE)
+            self.seed_s = int(math.floor(level + 0.5))
+            self.s_level_resid = round(level - self.seed_s, 4)
+        if self._z_ends():  # v24.4.6 Z clearance, like S's
+            zl = 3 + (self.seed_z + self.z_level_resid - 3) * (1 - self.Z_CLEARANCE)
+            self.seed_z = int(math.floor(zl + 0.5))
+            self.z_level_resid = round(zl - self.seed_z, 4)
         s0, a0, z0 = self.seed_s, self.seed_a, self.seed_z
         a_start_exact = a0 + (self.a_level_resid if self.levels_on else 0.0)  # v23.3: where the valence level really is
         orig_steps = [{
@@ -3833,13 +4676,23 @@ class ToroidalBrainEngine:
             d1 = (-force_s, -1, -1)
         else:
             d1 = (-1, -force_a, force_z)
-        ps1, pa1, pz1 = s0 + d1[0] * k, a0 + d1[1] * k, z0 + d1[2] * k
-        s1, a1, z1 = self.mod7(ps1), self.mod7(pa1), self.mod7(pz1)
+        if self._s_ends():
+            d1 = (0, d1[1], d1[2])  # v24.4.4: step 1 leaves S alone (it moved S down on even S and against the push on odd S)
+        if self._z_ends():
+            d1 = (d1[0], d1[1], 0)  # v24.4.6: step 1 leaves Z alone (it used the raw, un-zeroed push)
+        if getattr(self, "mood_fix_on", False) and self.mood_active():
+            d1 = (d1[0], 0, d1[2])  # v24.3.4: step 1 leaves A alone (it leaned down on odd S and against the push on even S)
+        self.s_edge_wrapped = False  # v24.4.4
+        ps1, pa1, pz1 = self._s_step(float(s0) + (self.s_level_resid if self._s_ends() and self.S_SOFT_EDGES else 0.0), d1[0] * k), a0 + d1[1] * k, z0 + d1[2] * k
+        s1, a1, z1 = self.mod7(ps1), self._a_cell(pa1), self.mod7(pz1)  # v24.4.7: A cell via /aedge
 
+        # v24.1.2: step 1 is a fixed rule move shared by both paths, not the push itself; the label says so (it used to put
+        # "push dA=+2" next to a move of -0.19)
         step1_obj = {
             "stepIndex": 1, "S": s1, "A": a1, "Z": z1,
-            "operation": f"Initial 3D impulse on '{c1}' (push dS={force_s:+d}, dA={force_a:+d}, dZ={force_z:+d}; "
-                         f"actual move dS={d1[0] * k:+.2f}, dA={d1[1] * k:+.2f}, dZ={d1[2] * k:+.2f})",
+            "operation": f"Step 1 rule move on '{c1}' ({'odd' if s0 % 2 == 1 else 'even'} S): dS={d1[0]:+d}, dA={d1[1]:+d}, "
+                         f"dZ={d1[2]:+d} (actual move x{k:.2f}: dS={d1[0] * k:+.2f}, dA={d1[1] * k:+.2f}, dZ={d1[2] * k:+.2f}; "
+                         f"this turn's push: dS={force_s:+d}, dA={force_a:+d}, dZ={force_z:+d})",
             "explanation": f"3D momentum shifts both paths to ({s1}, {a1}, {z1}) [{self.get_cell_emotion_name(s1, a1, z1)}].",
             "dependsOnAxiom": False
         }
@@ -3847,18 +4700,27 @@ class ToroidalBrainEngine:
         flip_steps.append(dict(step1_obj))
 
         s_o, a_o, z_o, s_f, a_f, z_f = s1, a1, z1, s1, a1, z1
+        # v24.1.2 Z follows the push (switch): on ¬R, Z steps by the message's own Z velocity (none when it is weak)
+        # instead of max(1, push), which made Z climb every turn whatever was said. The R path is unchanged.
+        z_follow = getattr(self, "z_follow_on", False)
+        if z_follow:
+            vz = self.vel_z
+            if self._z_ends() and self.Z_ZERO_RATE is not None:  # v24.4.6 lab option: against the usual Z push
+                vz = self.vel_z - self.z_push_mean
+                self.z_push_mean = round(self.z_push_mean + self.Z_ZERO_RATE * (self.vel_z - self.z_push_mean), 4)
+            zf = 0 if abs(vz) < self.Z_DEAD_ZONE else (max(-2, min(2, int(round(vz)))) or (1 if vz > 0 else -1))
         po = [ps1, pa1, pz1]  # exact positions of R and ¬R (v21.3 damping)
         pf = [ps1, pa1, pz1]
         for step_idx in range(2, 10):
             if s_o % 2 == 1:
                 d_o = (-force_s, -(1 if step_idx % 2 == 0 else 0), -(1 if step_idx % 3 == 0 else 0))
-                op_o = f"R (Odd S): dS={-force_s:+d}, dZ=-1 mod 7"
+                op_o = f"R (Odd S): dS={d_o[0]:+d}, dA={d_o[1]:+d}, dZ={d_o[2]:+d} mod 7"  # v24.1.2: from the actual move
             else:
                 d_o = (-(1 if step_idx % 2 == 0 else 0), -force_a, -force_z)
-                op_o = f"R (Even S): dA={-force_a:+d}, dZ={-force_z:+d} mod 7"
+                op_o = f"R (Even S): dS={d_o[0]:+d}, dA={d_o[1]:+d}, dZ={d_o[2]:+d} mod 7"
             op_o += f" (actual move x{k:.2f}: dS={d_o[0] * k:+.2f}, dA={d_o[1] * k:+.2f}, dZ={d_o[2] * k:+.2f})"  # v22.10: honest label
-            po = [p + d * k for p, d in zip(po, d_o)]
-            s_o, a_o, z_o = self.mod7(po[0]), self.mod7(po[1]), self.mod7(po[2])
+            po = [self._s_step(po[0], d_o[0] * k)] + [p + d * k for p, d in zip(po[1:], d_o[1:])]  # v24.4.4
+            s_o, a_o, z_o = self.mod7(po[0]), self._a_cell(po[1]), self.mod7(po[2])
             orig_steps.append({
                 "stepIndex": step_idx, "S": s_o, "A": a_o, "Z": z_o, "operation": op_o,
                 "explanation": f"Original axiom R drifts to ({s_o}, {a_o}, {z_o}) [{self.get_cell_emotion_name(s_o, a_o, z_o)}].",
@@ -3866,14 +4728,21 @@ class ToroidalBrainEngine:
             })
 
             if s_f % 2 != 1:
-                d_f = (force_s, (1 if force_a >= 0 else -1), max(1, force_z))
-                op_f = f"¬R Flip (Even S): dS={force_s:+d}, dZ=+{max(1, force_z)} mod 7"
+                d_f = (force_s, (((1 if force_a > 0 else -1) if force_a else 0) if getattr(self, "mood_fix_on", False)
+                                  else (1 if force_a >= 0 else -1)), zf if z_follow else max(1, force_z))
+                op_f = f"¬R Flip (Even S): dS={d_f[0]:+d}, dA={d_f[1]:+d}, dZ={d_f[2]:+d} mod 7"  # v24.1.2: from the actual move
             else:
-                d_f = ((1 if force_s >= 0 else -1), force_a, (1 if step_idx % 2 == 0 else 0))
-                op_f = f"¬R Flip (Odd S): dA={force_a:+d}, dZ=+1 mod 7"
+                z_odd = ((1 if zf > 0 else -1 if zf < 0 else 0) if z_follow else 1) if step_idx % 2 == 0 else 0
+                d_f = ((((1 if force_s > 0 else -1) if force_s else 0) if self._s_ends()
+                        else (1 if force_s >= 0 else -1)), force_a, z_odd)  # v24.4.4: no push = no S step
+                op_f = f"¬R Flip (Odd S): dS={d_f[0]:+d}, dA={d_f[1]:+d}, dZ={d_f[2]:+d} mod 7"
             op_f += f" (actual move x{k:.2f}: dS={d_f[0] * k:+.2f}, dA={d_f[1] * k:+.2f}, dZ={d_f[2] * k:+.2f})"
-            pf = [p + d * k for p, d in zip(pf, d_f)]
-            s_f, a_f, z_f = self.mod7(pf[0]), self.mod7(pf[1]), self.mod7(pf[2])
+            pf = [self._s_step(pf[0], d_f[0] * k)] + [p + d * k for p, d in zip(pf[1:], d_f[1:])]  # v24.4.4
+            if self._z_ends():
+                pf[2] = self._z_step(pf[2] - d_f[2] * k, d_f[2] * k)  # v24.4.6: soft walls
+            elif z_follow and self.Z_CLIP:
+                pf[2] = min(6.0, max(0.0, pf[2]))  # v24.1.2: the ends of the concrete-abstract line are ends, not a loop
+            s_f, a_f, z_f = self.mod7(pf[0]), self._a_cell(pf[1]), self.mod7(pf[2])
             flip_steps.append({
                 "stepIndex": step_idx, "S": s_f, "A": a_f, "Z": z_f, "operation": op_f,
                 "explanation": f"Flipped axiom ¬R climbs to ({s_f}, {a_f}, {z_f}) [{self.get_cell_emotion_name(s_f, a_f, z_f)}].",
@@ -3896,8 +4765,17 @@ class ToroidalBrainEngine:
 
         term_o, term_f = orig_steps[-1], flip_steps[-1]
         active_term = term_f if self.governor_mode == "FLIPPED" else term_o
-        next_z = 0 if active_term["Z"] == 6 else active_term["Z"]
+        # The 6 -> 0 reset belongs to the turn clock; with Z following the push (v24.1.2) the landing Z is kept.
+        next_z = active_term["Z"] if (z_follow and self.governor_mode == "FLIPPED") else (0 if active_term["Z"] == 6 else active_term["Z"])
         self.seed_s, self.seed_a, self.seed_z = active_term["S"], active_term["A"], next_z
+        if self._z_ends() and self.governor_mode == "FLIPPED":  # v24.4.6: Z clearance starts from the exact spot
+            self.z_level_resid = round(max(-0.5, min(0.5, pf[2] - next_z)), 4)
+        # v24.4.0: keep the exact (unwrapped) S position of the active path; learning uses it when /sfix is on
+        self.last_exact_s = round((pf if self.governor_mode == "FLIPPED" else po)[0], 4)
+        if self._s_ends() and 0.0 <= self.last_exact_s <= 6.0:
+            self.s_level_resid = round(self.last_exact_s - self.seed_s, 4)  # v24.4.4: S clearance starts from the exact spot
+        else:
+            self.s_level_resid = 0.0
         valence_note = None
         if self.levels_on:
             # v23.3: valence follows how far the turn really moved on the calm axis (the exact, unwrapped position), and is
@@ -3908,20 +4786,29 @@ class ToroidalBrainEngine:
             move_a = (pf if self.governor_mode == "FLIPPED" else po)[1] - a0
             v_after = self.valence_after_move(v_before, move_a)
             self._set_valence(v_after)
+            path_a = active_term["A"]
+            if getattr(self, "a_edge", "wrap") == "level" and active_term["A"] != self.seed_a:
+                # v24.4.7 /aedge level: the reply's cell sits where the mood level is (the face and the voice can't disagree)
+                active_term["A"] = self.seed_a
+                active_term["explanation"] += (f" Mood Ring cell set to the mood level: A={self.seed_a} "
+                                               f"[{self.get_cell_emotion_name(active_term['S'], self.seed_a, active_term['Z'])}].")
             valence_note = {"before": round(v_before, 3), "moveCells": round(move_a, 3), "after": self.valence(),
-                            "clipped": abs(v_after) > 1.0, "landingA": active_term["A"]}
+                            "clipped": abs(v_after) > 1.0, "landingA": active_term["A"], "pathA": path_a}
 
         audit = {
             "engineVersion": f"T.O.R.R.E.N.T. v{ENGINE_VERSION}",
             "problemTitle": f"3D Volumetric Trace: '{c1.capitalize()}' & '{c2.capitalize()}'",
-            "sAxisLabel": BRAIN_LIBRARY["sAxisLabel"], "aAxisLabel": BRAIN_LIBRARY["aAxisLabel"], "zAxisLabel": BRAIN_LIBRARY["zAxisLabel"],
+            "sAxisLabel": self.lib("sAxisLabel"), "aAxisLabel": self.lib("aAxisLabel"), "zAxisLabel": BRAIN_LIBRARY["zAxisLabel"],
             "loadBearingAxiom": f"R: Unflipped drift from ({s0},{a0},{z0}) on '{c1}' -> settles at ({term_o['S']},{term_o['A']},{term_o['Z']}) [{self.get_cell_emotion_name(term_o['S'], term_o['A'], term_o['Z'])}].",
             "invertedAxiom": f"R' (¬R): Logical Flip at t*={bifurcation_step} on '{c1}' -> locks at ({term_f['S']},{term_f['A']},{term_f['Z']}) [{self.get_cell_emotion_name(term_f['S'], term_f['A'], term_f['Z'])}].",
             "bifurcationStep": bifurcation_step, "flipRateFailureScore": failure_score,
             "structuralVerdict": verdict, "meanDeltaD": mean_delta_d, "divergenceRatioPercent": div_ratio,
             "drivers": drivers, "textSignature": text_sig, "seedStart": [s0, a0, z0], "velocity": [self.vel_s, self.vel_a, self.vel_z],
             "auditSummary": f"From ({s0},{a0},{z0}) with 3D vel ({self.vel_s:+.2f},{self.vel_a:+.2f},{self.vel_z:+.2f}), paths bifurcate at t*={bifurcation_step} (3D Δd={mean_delta_d}u). R->({term_o['S']},{term_o['A']},{term_o['Z']}), ¬R->({term_f['S']},{term_f['A']},{term_f['Z']}).",
-            "originalTrajectory": orig_steps, "flippedTrajectory": flip_steps, "valenceLevel": valence_note
+            "originalTrajectory": orig_steps, "flippedTrajectory": flip_steps, "valenceLevel": valence_note,
+            "exactS": self.last_exact_s, "sFix": bool(getattr(self, "s_fix_on", False)),
+            "sEdge": {"mode": getattr(self, "s_edge", "walls"), "wrapped": bool(getattr(self, "s_edge_wrapped", False))},
+            "aEdge": getattr(self, "a_edge", "wrap")  # v24.4.7
         }
         self.last_audit = audit
         return audit
@@ -4368,7 +5255,7 @@ class ToroidalBrainEngine:
                 self.cap_dream_propositions(max_dreams=12)
 
             dream_idea = f"'{w1}' synthesizes through '{bridge_word}' into '{w2}'"
-            dream_text = f"Dream [Z=6]: {dream_idea} -> crystallized cell ({dream_coord}) emotion as '{evolved_mood}'!"
+            dream_text = f"Dream [Z=6]: {dream_idea} -> named cell ({dream_coord}) as '{evolved_mood}'"  # v24.1.2: it only names it
             dream_reports.append(dream_text)
             self.dream_journal.append({"threadA": w1, "threadB": w2, "bridge": bridge_word, "dreamCoord": [s_d, a_d, z_d], "emotionName": evolved_mood, "idea": dream_idea, "summary": dream_text})
         self.dream_journal = self.dream_journal[-30:]
@@ -4400,7 +5287,7 @@ class ToroidalBrainEngine:
             for a in range(7):
                 for z in range(7):
                     key = f"{s},{a},{z}"
-                    seed_name = f"{BRAIN_LIBRARY['S_rough_seeds'][str(s)]}-{BRAIN_LIBRARY['A_rough_seeds'][str(a)]}"
+                    seed_name = self.seed_cell_name(s, a)
                     self.cell_centroids[key] = list(self.coord_vectors[(s, a, z)])
                     self.cell_lexicon[key] = {"name": seed_name, "seed_name": seed_name, "stage": 1, "visits": 0, "custom": False, "top_words": []}
 
@@ -4415,7 +5302,7 @@ class ToroidalBrainEngine:
 
     def apply_user_emotion_name(self, cell_key, custom_word):
         s_val = int(cell_key.split(",")[0])
-        tone_w = BRAIN_LIBRARY["S_band_tones"][str(s_val)][0].strip()
+        tone_w = self.lib("S_band_tones")[str(s_val)][0].strip()
         clean_cap = custom_word.strip().capitalize()
         full_name = clean_cap if "-" in clean_cap else f"{tone_w}-{clean_cap}"
         self.cell_lexicon[cell_key].update({"name": full_name, "stage": 3, "custom": True})
@@ -4428,25 +5315,27 @@ class ToroidalBrainEngine:
         self.cell_centroids[cell_key] = self.blend(self.cell_centroids[cell_key], vec, 0.65, 0.35)
         return full_name
 
-    def is_valid_emotion_name(self, name_str, s_val=None):
+    def is_valid_emotion_name(self, name_str, s_val=None, custom=False):
         if not name_str or "-" not in name_str:
             return False
         parts = [p.strip().lower() for p in name_str.split("-")]
         if len(parts) != 2:
             return False
-        if s_val is not None and parts[0] not in {w.strip().lower() for w in BRAIN_LIBRARY["S_band_tones"][str(s_val)]}:
-            return False
-        allowed_second = set(self.core_emotion_pool) | {w.lower() for w in BRAIN_LIBRARY["A_rough_seeds"].values()} | {"shift", "lift", "pivot", "bridge", "centering", "turn", "leap", "awakening", "opening", "reflection", "ascent"}
+        tone_sets = [self.lib("S_band_tones")] + ([BRAIN_LIBRARY["S_band_tones"], NEW_LABELS["S_band_tones"]] if custom else [])
+        if s_val is not None and not any(parts[0] in {w.strip().lower() for w in ts[str(s_val)]} for ts in tone_sets):
+            return False  # v24.4.2: a name Matt gave (custom) is kept under either label set
+        seed_sets = [self.lib("A_rough_seeds")] + ([BRAIN_LIBRARY["A_rough_seeds"], NEW_LABELS["A_rough_seeds"]] if custom else [])
+        allowed_second = set(self.core_emotion_pool) | set(NEW_FEELINGS) | {w.lower() for ss in seed_sets for w in ss.values()} | {"shift", "lift", "pivot", "bridge", "centering", "turn", "leap", "awakening", "opening", "reflection", "ascent"}
         return parts[1] in allowed_second
 
     def synthesize_unique_cell_name(self, s, a, z, cell_vec, mem_vec):
         key = f"{s},{a},{z}"
         used_names = {info["name"] for k, info in self.cell_lexicon.items() if k != key and info.get("stage", 1) >= 2}
-        a_axis_vec = self.phrase_to_vector(BRAIN_LIBRARY["A_axes"][str(a)] + " " + BRAIN_LIBRARY["Z_axes"][str(z)])
+        a_axis_vec = self.phrase_to_vector(self.lib("A_axes")[str(a)] + " " + BRAIN_LIBRARY["Z_axes"][str(z)])
         core_target = self.blend(mem_vec, a_axis_vec, 0.65, 0.35)
-        band_tones = [w.strip().lower() for w in BRAIN_LIBRARY["S_band_tones"][str(s)]]
+        band_tones = [w.strip().lower() for w in self.lib("S_band_tones")[str(s)]]
         scored_tones = sorted([(self.dot(cell_vec, self.vectors[tw]), tw.capitalize()) for tw in band_tones if tw in self.vectors], key=lambda x: x[0], reverse=True)
-        scored_cores = sorted([(self.dot(core_target, self.vectors[cw]), cw.capitalize()) for cw in self.core_emotion_pool if cw in self.vectors], key=lambda x: x[0], reverse=True)
+        scored_cores = sorted([(self.dot(core_target, self.vectors[cw]), cw.capitalize()) for cw in self.feeling_pool() if cw in self.vectors], key=lambda x: x[0], reverse=True)
 
         for _, tone_w in scored_tones:
             for _, core_w in scored_cores[:12]:
@@ -4454,7 +5343,7 @@ class ToroidalBrainEngine:
                     cand = f"{tone_w}-{core_w}"
                     if cand not in used_names:
                         return cand
-        return f"{BRAIN_LIBRARY['S_rough_seeds'][str(s)]}-{scored_cores[0][1]}"
+        return f"{self.lib('S_rough_seeds')[str(s)]}-{scored_cores[0][1]}"
 
     # v24.1 finding (Fable 5.2 review #20), kept as is on purpose: "visits" counts sleep passes and loads too, so the
     # crystal rule "at least 2 visits" is met by any cell with words after one sleep. Counting only real visits cut
@@ -4533,7 +5422,7 @@ class ToroidalBrainEngine:
         self.last_trace_key = trace_key
 
         move_noun = self.select_trace_movement_noun(from_r, to_flip, audit.get("meanDeltaD", 2.0))
-        scored_cores = sorted([(self.dot(e_trace, self.vectors[cw]), cw.capitalize()) for cw in self.core_emotion_pool if cw in self.vectors], key=lambda x: x[0], reverse=True)
+        scored_cores = sorted([(self.dot(e_trace, self.vectors[cw]), cw.capitalize()) for cw in self.feeling_pool() if cw in self.vectors], key=lambda x: x[0], reverse=True)
         best_core = scored_cores[0][1] if scored_cores else "Harmony"
 
         existing = self.trace_lexicon.get(trace_key)
@@ -4680,6 +5569,10 @@ class ToroidalBrainEngine:
 
     def axis_weight(self, vec, axis):
         """Estimated starting weight of a word on axis A (calm-panic), S (social-isolated) or Z (abstract-concrete)."""
+        if axis == "S" and getattr(self, "s_new_on", False) and "S" in self.calibrated_axes:
+            # v24.4.1: rebuilt S. Read from FITTED_S, never written into calibrated_axes (that dict is shared between
+            # brains open together, so writing it would change the other brain too)
+            return max(-3.0, min(3.0, FITTED_S["scale"] * (self.dot(vec, FITTED_S["u"]) - FITTED_S["center"])))
         if axis in self.calibrated_axes:
             u, center, scale = self.calibrated_axes[axis]
             return max(-3.0, min(3.0, scale * (self.dot(vec, u) - center)))  # same range as the hand-set weights
@@ -4688,6 +5581,14 @@ class ToroidalBrainEngine:
         return (self.dot(vec, pa) - self.dot(vec, pb)) * 3.0
 
     def load_glove(self, glove_file, max_words):
+        other = getattr(self, "_borrow_words_from", None)
+        if other is not None:  # v24.2 open_sharing_words(): the same word space as a brain already open
+            self.raw_glove, self.word_rank, self.vector_mode = other.raw_glove, other.word_rank, other.vector_mode
+            self.calibrated_axes = other.calibrated_axes
+            self.factory_vectors = dict(other.factory_vectors)  # the lists are never edited in place, so they're shared
+            for w, vec in other.factory_vectors.items():
+                self.vectors[w] = list(vec)  # this brain's own working copy (it may learn its own meanings)
+            return
         if max_words <= 0 or glove_file == "__shared_in_ram__":
             return
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -4899,7 +5800,7 @@ class ToroidalBrainEngine:
         for s in range(7):
             for a in range(7):
                 for z in range(7):
-                    desc = f"{BRAIN_LIBRARY['S_axes'][str(s)]} {BRAIN_LIBRARY['A_axes'][str(a)]} {BRAIN_LIBRARY['Z_axes'][str(z)]}"
+                    desc = f"{self.lib('S_axes')[str(s)]} {self.lib('A_axes')[str(a)]} {BRAIN_LIBRARY['Z_axes'][str(z)]}"
                     coords[(s, a, z)] = self.phrase_to_vector(desc)
         return coords
 
@@ -5327,6 +6228,29 @@ class ToroidalBrainEngine:
                     self.novelty = max(0.0, min(1.0, float(data.get("novelty", self.NOVELTY_REST))))
                     self.idle_menu_on = bool(data.get("idle_menu_on", True))  # v23.4
                     self.rhythm_on = bool(data.get("rhythm_on", False))  # v24.0
+                    self.z_follow_on = bool(data.get("z_follow_on", False))  # v24.1.2
+                    self.mood_fix_on = bool(data.get("mood_fix_on", False))  # v24.3.4
+                    self.s_fix_on = bool(data.get("s_fix_on", False))  # v24.4.0
+                    self.s_new_on = bool(data.get("s_new_on", False))  # v24.4.1
+                    ae = data.get("a_edge", "wrap")  # v24.4.7 (brains from before: the ring)
+                    self.a_edge = ae if ae in self.A_EDGE_MODES else "wrap"
+                    se = data.get("s_edge", "wrap")  # v24.4.4 (brains from before: the ring, as they had)
+                    self.s_edge = se if se in self.S_EDGE_MODES else "wrap"
+                    sbp = data.get("s_blank_point")
+                    self.s_blank_point = float(sbp) if isinstance(sbp, (int, float)) else None
+                    self.s_push_mean = float(data.get("s_push_mean", 0.0) or 0.0)
+                    self._s_mean_seeded = "s_push_mean" in data and se in ("walls", "overstim")
+                    self.s_level_resid = float(data.get("s_level_resid", 0.0) or 0.0)
+                    self.z_level_resid = float(data.get("z_level_resid", 0.0) or 0.0)  # v24.4.6
+                    self.z_push_mean = float(data.get("z_push_mean", 0.0) or 0.0)
+                    if bool(data.get("new_labels_on", False)):  # v24.4.2: before the saved cells are rebuilt below
+                        self.new_labels_on = True
+                        self.apply_label_set()
+                    mz = data.get("mood_zero", "usual")  # v24.3
+                    self.mood_zero = mz if mz in self.MOOD_ZERO_MODES else "usual"
+                    bp = data.get("blank_point")
+                    self.blank_point = float(bp) if isinstance(bp, (int, float)) else None
+                    self.speaker_push = dict(data.get("speaker_push", {}) or {})
                     try:
                         self.rhythm_offset = max(-12.0, min(12.0, float(data.get("rhythm_offset", 0.0))))
                     except (TypeError, ValueError):
@@ -5345,6 +6269,9 @@ class ToroidalBrainEngine:
                     self.last_idle = self.idle_journal[-1] if self.idle_journal else None
                     self.a_push_mean = float(data.get("a_push_mean", 0.0))
                     self.speaker_tone = dict(data.get("speaker_tone", {}) or {})  # v23.4.1
+                    self.trust = {k: dict(v) for k, v in (data.get("trust") or {}).items()}  # v24.6
+                    self.together_weights = {k: float(v) for k, v in (data.get("together_weights") or {}).items()}  # v25.0
+                    self.together_level = float(data.get("together_level", 0.0) or 0.0)
                     self.a_level_resid = float(data.get("a_level_resid", 0.0))
                     self.turn_counter = int(data.get("turn_counter", 0))
                     self.split_rest = {k: int(v) for k, v in data.get("split_rest", {}).items()
@@ -5504,7 +6431,7 @@ class ToroidalBrainEngine:
                         if c_3d in self.cell_lexicon and isinstance(lex_entry, dict):
                             s_c = int(c_3d.split(",")[0])
                             self.cell_lexicon[c_3d]["visits"] = max(self.cell_lexicon[c_3d]["visits"], lex_entry.get("visits", 0))
-                            if lex_entry.get("custom") and self.is_valid_emotion_name(lex_entry.get("name", ""), s_c):
+                            if lex_entry.get("custom") and self.is_valid_emotion_name(lex_entry.get("name", ""), s_c, custom=True):
                                 self.cell_lexicon[c_3d]["name"] = lex_entry["name"]
                                 self.cell_lexicon[c_3d]["stage"] = 3
                                 self.cell_lexicon[c_3d]["custom"] = True
@@ -5590,6 +6517,17 @@ class ToroidalBrainEngine:
             "valence_level": self.valence_level, "novelty": round(self.novelty, 4),  # v23.3
             "idle_menu_on": self.idle_menu_on, "idle_habits": self.idle_habits, "idle_outcome_mean": self.idle_outcome_mean,
             "rhythm_on": self.rhythm_on, "rhythm_offset": self.rhythm_offset,  # v24.0
+            "z_follow_on": self.z_follow_on,  # v24.1.2
+            "mood_fix_on": self.mood_fix_on,  # v24.3.4
+            "s_fix_on": self.s_fix_on,  # v24.4.0
+            "s_new_on": self.s_new_on,  # v24.4.1
+            "s_edge": self.s_edge,  # v24.4.4
+            "a_edge": self.a_edge,  # v24.4.7
+            "s_blank_point": self.s_blank_point, "s_push_mean": self.s_push_mean,  # v24.4.4
+            "s_level_resid": self.s_level_resid,
+            "z_level_resid": self.z_level_resid, "z_push_mean": self.z_push_mean,  # v24.4.6
+            "new_labels_on": self.new_labels_on,  # v24.4.2
+            "mood_zero": self.mood_zero, "blank_point": self.blank_point, "speaker_push": self.speaker_push,  # v24.3
             "felt_usual": round(self.felt_usual, 3) if self.felt_usual is not None else None,
             "recent_turns": self.recent_turns[-self.RECENT_TURNS_KEEP:], "caretaker_last_seen": self.caretaker_last_seen,
             "idle_on": self.idle_on,
@@ -5597,6 +6535,8 @@ class ToroidalBrainEngine:
             "idle_journal": self.idle_journal[-10:],
             "a_push_mean": round(self.a_push_mean, 4),
             "speaker_tone": self.speaker_tone,  # v23.4.1
+            "trust": self.trust,  # v24.6
+            "together_weights": self.together_weights, "together_level": self.together_level,  # v25.0
             "a_level_resid": self.a_level_resid,
             "pending_demoted": {k: sorted(v) for k, v in self.saved_demoted.items() if v and k not in self.crystal_lattices},
             "turn_counter": self.turn_counter,
@@ -5744,6 +6684,9 @@ class ToroidalBrainEngine:
 
     def _learn_from_turn(self, user_text, tokens, concepts, s_fin, a_fin, z_fin):
         a_valence, s_valence, z_valence = (a_fin - 3.0) / 3.0, (s_fin - 3.0) / 3.0, (z_fin - 3.0) / 3.0
+        if getattr(self, "s_fix_on", False) and self.last_exact_s is not None:
+            # v24.4.0: learn from where the turn really went on S (unwrapped, clipped), not the wrapped landing cell
+            s_valence = max(-1.0, min(1.0, (self.last_exact_s - 3.0) / 3.0))
         negated_set = self.find_negated_concepts_in_tokens(tokens, user_text)
         pos_concepts = [c for c in concepts if c not in negated_set and self.is_valid_concept_node(c)]
         if self.negation_v2:  # v23.3.3 option C: only "X is not Y" says two words don't go together (recorded once)
@@ -5756,6 +6699,10 @@ class ToroidalBrainEngine:
 
         cell_key = f"{s_fin},{a_fin},{z_fin}"
         self.cortical_cells.setdefault(cell_key, {})
+        # v24.2.1: a line from another brain (untrusted) is learned at PEER_LEARN strength, with no cell deposits and no
+        # kept ideas. Its links are new and faint (no 0.25 starting minimum). In v24.2 it was learned like the user's
+        # words, and two brains echoing each other built one word into the top hub of both (Meridian/Hope, 2026-11-13).
+        peer = self.peer_turn and str(self.wire_source or "").startswith("peer:")
 
         # Compute contextual anchor vector from known in-vocabulary words in the turn or cell centroid
         known_turn_vecs = [self.vectors[w] for w in (pos_concepts + tokens) if w in self.vectors and w not in self.stop_words]
@@ -5774,11 +6721,24 @@ class ToroidalBrainEngine:
             # mix its name-uses into the word's cells, which are no longer scrubbed)
             if self.is_provisional_word(c):
                 return False  # v22.4: a one-off unknown word (likely a typo) doesn't claim a cell yet
+            if peer:
+                return False  # v24.2.1: another brain's words don't claim cells
             return c not in id_tokens or cell_key == "3,3,3" or (allow_id_in_cell and c in hard_ids)
 
-        self.extract_proposition(user_text, tokens, pos_concepts, cell_key)
+        if peer:  # v24.2.1: another brain's idea isn't kept; its pair is linked faintly, like a held-back reply idea
+            ideas_before = len(self.idea_memory)
+            prop = self.extract_proposition(user_text, tokens, pos_concepts, cell_key, wire=False)
+            if prop:
+                wire = prop.pop("_wire", None)
+                self.idea_memory = self.idea_memory[:ideas_before] + [p for p in self.idea_memory[ideas_before:] if p is not prop]
+                if wire:
+                    self.wire_concepts(wire[0], wire[1], amount=self.PEER_LEARN * wire[2], min_link=0.01)
+        else:
+            self.extract_proposition(user_text, tokens, pos_concepts, cell_key)
 
         g = self.turn_learning_gain  # v22.5 cerebellum: surprising turns are learned harder, familiar ones lighter
+        if peer:
+            g = g * self.PEER_LEARN  # v24.2.1: calm, social and depth numbers move a quarter as much too
         for c in pos_concepts[:6]:
             self.core_concept_pool.add(c)
             vec = self.get_or_create_vector(c, context_vec=context_anchor_vec)
@@ -5802,17 +6762,23 @@ class ToroidalBrainEngine:
         if self.mood_active() or self.calm_learning == "company":  # v22.10: company teaches calm (TORRENT_CALM=landing = old)
             self.learn_calm_from_what_follows(pos_concepts[:6], g)  # v22.11 amygdala (before company changes this turn)
             self.learn_calm_from_company(pos_concepts[:6], g)
+        self.learn_together_turn(pos_concepts[:6], peer=peer)  # v25.0 connection v1 (measured only)
 
         # Keep Hebbian co-occurrence wiring active for all top concepts (including identity tokens)
         top_c = pos_concepts[:5]
         for i in range(len(top_c)):
             for j in range(i + 1, len(top_c)):
                 if self.is_provisional_word(top_c[i]) or self.is_provisional_word(top_c[j]):
-                    self.wire_concepts(top_c[i], top_c[j], amount=self.SEEN_ONCE_LINK, min_link=0.01)  # v22.11: faint
+                    self.wire_concepts(top_c[i], top_c[j], amount=self.SEEN_ONCE_LINK * (self.PEER_LEARN if peer else 1.0),
+                                       min_link=0.01)  # v22.11: faint
+                elif peer:
+                    self.wire_concepts(top_c[i], top_c[j], amount=self.PEER_LEARN, min_link=0.01)  # v24.2.1
                 else:
                     self.wire_concepts(top_c[i], top_c[j], amount=1.0)
 
         spatial_concepts = [c for c in pos_concepts if admit(c)]
+        if peer:
+            return  # v24.2.1: no cell changes (centroid, naming, cleaving) from another brain's line
         self.update_cell_centroid_and_emotion(
             s_fin, a_fin, z_fin,
             spatial_concepts,
@@ -6160,6 +7126,14 @@ class ToroidalBrainEngine:
             return "user", m_user.group(1)
         m_bot = re.search(r"\b(?:your name is|i name you|call yourself|i will call you)\s+([a-z]+)\b", joined)
         if m_bot:
+            # v24.3.1: the name as written in the message, with a second word if it starts with a capital ("Copy X",
+            # "Meridian X"); "your name is Gyre and ..." stays one word
+            self.name_display_hint = None
+            if raw:
+                mr = re.search(r"(?i:your name is|i name you|call yourself|i will call you)\s+([A-Za-z][A-Za-z'-]*)"
+                               r"(?:\s+([A-Z][A-Za-z'-]{0,11})\b)?", raw)
+                if mr and mr.group(1).lower() == m_bot.group(1):
+                    self.name_display_hint = mr.group(1) + (" " + mr.group(2) if mr.group(2) else "")
             return "bot", m_bot.group(1)
         return None, None
 
@@ -6259,7 +7233,7 @@ class ToroidalBrainEngine:
         active_traj = audit["flippedTrajectory"] if self.governor_mode == "FLIPPED" else audit["originalTrajectory"]
         s, a, z = active_traj[-1]["S"], active_traj[-1]["A"], active_traj[-1]["Z"]
         cell_key = f"{s},{a},{z}"
-        s_desc, a_desc, z_desc = BRAIN_LIBRARY["S_axes"][str(s)], BRAIN_LIBRARY["A_axes"][str(a)], BRAIN_LIBRARY["Z_axes"][str(z)]
+        s_desc, a_desc, z_desc = self.lib("S_axes")[str(s)], self.lib("A_axes")[str(a)], BRAIN_LIBRARY["Z_axes"][str(z)]
         user_name = self.speaker_name()  # v23.2: whoever is talking now
         name_tag = f", {user_name.capitalize()}" if user_name else ""
 
@@ -6291,6 +7265,8 @@ class ToroidalBrainEngine:
         bridge_concept = pondered_b if pondered_b else self.find_conceptual_bridge(c1, r1, exclude={c1, r1} | self.stop_words | id_tokens)
 
         id_role, id_name = self.detect_identity_teaching(tokens, raw=user_text)
+        if self.peer_turn:
+            id_role = None  # v24.2: another brain can't name or rename this one, or introduce a new person
         if id_role and id_name and len(id_name) < 3:
             id_role = None  # v24.1.1: a 1-2 letter name can't be linked or saved (also mid-chat)
         if id_role == "user" and not self.is_usable_name(id_name):
@@ -6300,7 +7276,7 @@ class ToroidalBrainEngine:
             return f"I'd rather keep '{id_name}' as a word than take it as my name{name_tag}."
         if id_role == "bot":
             self.pending_question = None
-            locked_bot = self.register_bot_name(id_name)
+            locked_bot = self.register_bot_name(id_name, display=getattr(self, "name_display_hint", None))
             return f"Identity anchor locked{name_tag}! I have christened this manifold '{locked_bot}' in my '{cell_emotion_name}' state at ({s}, {a}, {z}). I am {locked_bot}."
         elif id_role == "user" and self.user_profile.get("user_name") and id_name != self.caretaker_name():
             # v23.2: someone new introducing themselves. They become a known person and the current speaker; the
@@ -6439,8 +7415,8 @@ class ToroidalBrainEngine:
         return self.build_compositional_thought(c1, c2, r1, r2, bridge_concept, s, a, z, name_tag, thought_trace, trace_emotion_name, is_question)
 
     def respond(self, user_text):
-        if self.speak_pending is not None and not self.reading:
-            self._speak_resolve(self.now(), answered=True)  # v23.5.3: the person wrote back
+        if self.speak_pending is not None and not self.reading and not self.peer_turn:
+            self._speak_resolve(self.now(), answered=True)  # v23.5.3: the person wrote back (v24.2: not another brain)
         tokens = self.clean_tokens(user_text)
         self.turn_word_names = self.find_names_used_as_words(user_text, tokens)  # v21.3 names vs words
         self.awake_turn = True  # v22
@@ -6452,6 +7428,7 @@ class ToroidalBrainEngine:
                 self.idle_catch_up()  # v22.8: the silence since the last turn (does nothing when idle time is off)
                 self.note_speaker_turn()  # v23.2
                 self.note_tone(user_text)  # v23.4.1 tone sense (measured only)
+                self.note_trust_turn(user_text)  # v24.6 trust v1 (measured only)
             return self._respond_turn(user_text, tokens)
         finally:
             self.turn_word_names = set()
@@ -6463,25 +7440,38 @@ class ToroidalBrainEngine:
 
     def _respond_turn(self, user_text, tokens):
         self.turn_learning_gain = 1.0  # v22.5: set from surprise below, once the landing cell is known
-        if self.reading:  # v23.2: a book line can't confirm a dream or teach a definition as if a person said it
+        if self.reading or self.peer_turn:  # v23.2: a book line (v24.2: or another brain) can't confirm a dream or teach a definition
             self.turn_taught = {}
         else:
             self.check_user_dream_promotion(tokens)
             self.turn_taught = self.learn_definitions(user_text)  # v21.4: before learning, so the extractor can see it
-        self.experienced_words.update(t for t in tokens if t not in self.stop_words and len(t) >= 3)  # v21.6
+        if not (self.peer_turn and str(self.wire_source or "").startswith("peer:")):  # v24.2: an untrusted peer's words
+            self.experienced_words.update(t for t in tokens if t not in self.stop_words and len(t) >= 3)  # v21.6
         self.count_word_sightings(tokens)  # v22.4 typo rule
 
         concepts, quoted = self.extract_concepts(user_text, tokens)
         negated_in_turn = self.find_negated_concepts_in_tokens(tokens, user_text)
         pos_concepts = [c for c in concepts if c not in negated_in_turn]
+        if os.environ.get("TORRENT_NAMEPUSH", "").strip() != "1":  # v24.4.6: a name used as a name doesn't push
+            _ids = self.get_identity_tokens()
+            self._turn_name_tokens = _ids
+            push_concepts = [c for c in pos_concepts if c not in _ids] or ([] if any(c in _ids for c in pos_concepts) else pos_concepts)
+        else:
+            self._turn_name_tokens = set()
+            push_concepts = pos_concepts
 
-        audit = self.run_dual_trajectories(user_text, tokens, pos_concepts)
+        audit = self.run_dual_trajectories(user_text, tokens, push_concepts)
         audit["namesUsedAsWords"] = sorted(self.turn_word_names)
+        if not self.reading:  # v24.6 trust v1 (measured only)
+            audit["trust"] = {"who": self.speaker_name(), "trust": self.trust_value(), "now": self.trust_now()}
+            audit["together"] = {"level": self.together_level,
+                                 "words": {w: self.together_weights[w] for w in getattr(self, "_together_turn_words", [])
+                                           if w in self.together_weights}}  # v25.0
         active_traj = audit["flippedTrajectory"] if self.governor_mode == "FLIPPED" else audit["originalTrajectory"]
         s_fin, a_fin, z_fin = active_traj[-1]["S"], active_traj[-1]["A"], active_traj[-1]["Z"]
         term_cell_key = f"{s_fin},{a_fin},{z_fin}"
-        audit["surprise"] = self.measure_surprise(pos_concepts, term_cell_key)  # v22.5 cerebellum
-        self.levels_after_surprise(pos_concepts)  # v23: arousal (and the learning gain) from surprise + tense words
+        audit["surprise"] = self.measure_surprise(push_concepts, term_cell_key)  # v22.5 cerebellum
+        self.levels_after_surprise(push_concepts)  # v23: arousal (and the learning gain) from surprise + tense words
         audit["levels"] = self.levels()
         if concepts:
             self.learn_from_turn(user_text, tokens, concepts, s_fin, a_fin, z_fin)

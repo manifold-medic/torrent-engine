@@ -3,6 +3,131 @@
 All notable changes to T.O.R.R.E.N.T. Newest first. The engine (`torrentengine.py`) also keeps this history in the
 comment block at the top of the file. Versions before v21.1 (v10 to v21.0) were not recorded in a changelog.
 
+## v25.0.0 (2026-11-14): Trust and Connection
+A new phase. A brain now measures who it trusts and learns which words it meets with someone and which it meets
+alone. Both are **measured only**: tests show they change nothing about where a brain lands, its mood or what its
+words learn. They are there to be watched first.
+- **Connection (together <-> alone):** every word gets a number from -1 (met alone) to +1 (met with someone). It starts
+  at 0 for every word, because no human rating set measures felt togetherness: each brain builds it from its own life.
+  A person's message moves its words toward how together the moment is (trust in that person right now); another brain
+  in a `/dialogue` counts at a quarter of the rate; words visited during idle time move toward "alone", and a little
+  more for a speak-up nobody answered; sleep and book reading count as neither; each night pulls every number 5% back
+  toward 0. A "together level" rises when someone talks and slowly falls while alone.
+- **Where to see it:** a Together row on the face page; `/connection` (the level, the most together and most alone
+  words) and `/connection <word>`; the trace (`/export`) carries `together`.
+- Lab check (fresh brains, real word space): 6 of 7 predictions written before the test were right, 1 partly.
+
+## v24.6.0 (2026-11-14): trust v1 (measured only)
+- Each person, and each brain met in a dialogue, gets a trust number from good and bad experiences (the beta
+  reputation idea, Josang & Ismail 2002; parts of trust after Mayer, Davis & Schoorman 1995): warm or cold messages
+  (counting least), keeping your word ("I'll be back", "brb", "see you tomorrow", "back in 10 minutes" and then
+  writing again before the deadline), and answering the brain when it speaks up. Old experiences fade by half in two
+  weeks. The caretaker starts a little trusted (0.60), everyone else neutral (0.50). "Right now" trust is nudged by
+  the brain's own mood.
+- Shown on the face page (Trust row) and in `/people`; in the trace as `trust`. Nothing uses it to change learning or
+  listening.
+- Lab check: 5 of 6 predictions written before the test were right. Known weakness: the tone reader is noisy on
+  single messages, so tone counts least.
+
+## v24.5.0 (2026-11-14): standard and research presets
+- `/preset standard`: every tested fix on (Z follows push, mood fix, S fix, rebuilt S, new labels, S edge walls, A edge
+  level, link line hint), and `/switches` and `/help` show only the everyday switches. `/preset research`: every switch
+  shown (nothing turned on or off). Hidden test switches still work when typed; `/help all` lists everything.
+- New brains made by the bridge start on standard (`TORRENT_PRESET=research` at start-up keeps them unchanged).
+  Brains made before v24.5.0 count as research until you type `/preset standard`, so nothing changes under them.
+- `/moodlevel` is hidden when the levels are on (it did nothing extra there); the command still works.
+
+## v24.4.9 (2026-11-14): four parts of the day
+- With `/rhythm on`, the status and the voice use night (11 pm-7 am), morning, afternoon and evening by the brain's
+  own clock. Before, the status called anything from 9 pm to 9 am "night", while the voice was only told "night" from
+  about 11 pm to 7 am.
+
+## v24.4.8 (2026-11-14): contractions
+- Voice-to-text drops apostrophes. Besides "ill be" -> "I'll be", the bridge now restores im, dont, cant, itll and
+  thatll, and "id" -> "I'd" only before words like like/rather/say (not after my/the/your: "my id card" stays).
+- The engine split correctly typed contractions into wrong words: he'll -> "hell", she'll -> "shell", she'd -> "shed",
+  it'll -> "itll". They now split into their words like the others.
+
+## v24.4.7 (2026-11-14): the A edge, and /switches new
+- `/aedge wrap|walls|level`: the Mood Ring's reply cell wrapped, so one step past Joyful was Distressed and a brain's
+  happiest turns were told it was very upset while its face read +0.8. `walls` stops the cell at the ends; `level`
+  puts the reply's cell where the mood level is, so voice and face agree. Replay on 4 brains: 1-10 wrong-end cells per
+  brain before, 0 after.
+- `/switches new` turns every tested fix on at once; `/switches undo` puts back what it changed.
+- `/teach` works like `/note`; `/note:` with a colon works; `/notes KEY: text` adds a note.
+
+## v24.4.6 (2026-11-14): Z clearance, and names stop pushing
+- With `/zpush`, Z relaxes halfway toward the middle before each turn (it piled up at the top: 50 of 84 replayed turns
+  at Z=6).
+- A brain's name used as a name ("Hello Wonder!") no longer pushes the mood or counts as a question. Default on;
+  `TORRENT_NAMEPUSH=1` brings back the old behaviour.
+
+## v24.4.5 (2026-11-13): talk to the face page
+- The face page has a microphone and a speaker button (the browser's own speech), so you can talk to a brain and hear
+  it answer.
+
+## v24.4.4 (2026-11-13): the S edge
+- `/sedge walls|overstim|wrap`: S was a ring, so a turn pushed past "about things" came out at "about people" (1 turn
+  in 4). `walls` stops it at the ends; `overstim` wraps from "about people" to "about things" only while the brain is
+  wound up. With either, S is also measured as an average against the brain's usual, with a dead zone, soft edges and
+  clearance (walls alone piled turns against one end in the lab). Default: the old ring, until tried in chats.
+
+## v24.4.3 (2026-11-13): /switches and /help
+- `/switches` lists every switch for the open brain (short, phone-sized; `/switches full` says what each does).
+  `/help` lists every command. The start-up screen is shorter.
+
+## v24.4.2 (2026-11-13): new axis labels (/newlabels)
+- The calm axis is the **Mood Ring**: Distressed, Tense, Uneasy, Neutral, At ease, Content, Joyful. The old labels
+  (stillness to luminous clarity) didn't match what the axis measures, checked against two human rating sets
+  (Warriner et al. 2013; NRC VAD). The S axis is the **People Ring**: Material, Mechanical, Mixed, Factual, Shared,
+  Personal, Social. Cell names drop the stillness and light feeling words and gain unpleasant feelings. Per brain, off
+  by default.
+
+## v24.4.1 (2026-11-13): rebuilt S axis (/snew)
+- New words start on an S direction fitted to human socialness ratings (Diveica, Pexman & Binney 2023): "about things"
+  <-> "about people" (+0.71 with the ratings on held-out words, against +0.24 for the old S). Only the fitted direction
+  (50 numbers) is in the engine. Per brain, off by default.
+
+## v24.4.0 (2026-11-13): S learns from where the turn really went (/sfix)
+- A word's social number learned from the wrapped landing cell, so a turn pushed past "alone" taught its words "very
+  social". It now learns from the exact, unwrapped position. Per brain, off by default.
+
+## v24.3.4 (2026-11-13): mood push fix (/moodfix)
+- A weak mood push no longer moves the mood a full step (a dead zone, like Z's), and the first step no longer tilts the
+  mood (up and down moves are now the same size). Found from a brain frowning after "You're awesome!". Per brain, off by
+  default.
+
+## v24.3.3 and v24.3.2 (2026-11-13): voice test switches
+- `/sequestrant on|off`: words the voice mostly taught the brain itself are left out of what the voice is given, to
+  stop a brain and its voice feeding each other the same few words.
+- `/labels plain|original`: which words the voice is given for the coordinate (an A/B test of the original wording).
+
+## v24.3.1 (2026-11-13): small fixes
+- Face page: a "vs their usual" row and more animations (yawn when tired, nodding while dozing, a frown on a tense
+  walk, surprise, reading, listening). Speak-ups skip common words and other forms of known words, and reprint a
+  half-typed line. Two-word brain names ("Copy X") and a name's capitals are kept.
+
+## v24.3.0 (2026-11-13): mood zero (/moodzero blank|usual)
+- The mood's "usual" was a running average that learned the warmth of whoever talks most, so ordinary friendly lines
+  read as below usual. `blank` measures mood against what plain, feeling-free text does on that brain. Each person's
+  usual push is also kept, measured only (the face page's "vs their usual" row). Per brain, off by default.
+
+## v24.2.1 (2026-11-13): another brain's words are learned faintly
+- In a dialogue, an untrusted brain's lines teach at a quarter strength, make no cells and keep no ideas. Two brains
+  repeating each other for ~80 rounds had made one word the top hub of both. Also: an echo stop, a pause, and automatic
+  backups before a dialogue.
+
+## v24.2.0 (2026-11-13): brain-to-brain dialogue
+- `/dialogue <brain> [rounds|15m] [as=Name] [trust] [pause=N] [echostop=off] [topic]`: two brains from the `brains`
+  folder talk to each other, both backed up first. Another brain's lines are tagged as coming from it and can't teach
+  definitions, confirm a dream or rename the brain. `/persona` adds an optional persona file with a dose that can taper.
+
+## v24.1.2 (2026-11-12): the Z axis decision
+- `/zpush`: Z worked as a turn clock (one step every turn, back to 0 after 6). With the switch on, Z follows the
+  message's own push (concrete talk low, abstract talk high) and stops at the ends. Per brain, off by default.
+- `/linkline asis|gated|hint|both`: how the brain's connection line is shown to the voice (`hint` passed a field test:
+  no engine phrasing leaked into replies). Trace step labels now describe the move each step actually makes.
+
 ## v24.1.1 (2026-11-12): fixes from a second review
 Fable 5.2 re-reviewed v24.1 (19 of its 32 findings fully fixed, the rest partly or with side effects) and found
 three new medium problems, now fixed with the rest:

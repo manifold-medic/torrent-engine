@@ -12,7 +12,7 @@ An experimental "language-enabled toroidal crystalline manifold" (LTCM): a small
 
 | File | Purpose |
 |---|---|
-| `torrentengine.py` | The engine (v24.1.1). Standard library only. |
+| `torrentengine.py` | The engine (v25.0.0). Standard library only. |
 | `torrent_wordspace_50k.gz` | The word space: 50,000 processed GloVe vectors (~20 MB). Keep it next to the engine; it is loaded automatically. |
 | `brainpicker.py` | Lets you keep several brains (TCMs) and choose one at start-up. Keep it in the same folder. |
 | `ltcmbridge.py` | The easiest way to start: loads the engine and, if a local LLM (Ollama or an OpenAI-compatible server) is reachable, uses it as a voice. Falls back to the engine's own replies otherwise. Optional local voice in/out. |
@@ -20,6 +20,7 @@ An experimental "language-enabled toroidal crystalline manifold" (LTCM): a small
 | `cleanwords.py` | Optional: finds junk words in a brain file (glued or cut-off words, typos) and removes them. Makes a backup first. |
 | `TORRENT_DISCLOSURE.md` | Full technical description of how everything works, published as a defensive disclosure. |
 | `TORRENT_DISCLOSURE_ADDENDUM_1.md` | What was added from v21.1 to v24.1.1 (levels, idle time, live idle, speaking up, a sense of time, the bridge's memory and honesty features), in the same defensive-disclosure form. |
+| `TORRENT_DISCLOSURE_ADDENDUM_2.md` | What was added from v24.1.2 to v25.0.0 (the Mood Ring and rebuilt S axis, the axis edges, brain-to-brain dialogue, presets, trust and connection), in the same form. |
 | `CHANGELOG.md` | What changed in each version. |
 | `LICENSE` | Apache-2.0. |
 
@@ -98,7 +99,7 @@ Useful environment variables:
 - `TORRENT_VOICE_MODE`: how much the engine learns from the LLM's replies: `SOVEREIGN` (nothing), `ATTENUATED` (a little), `FULL` (default).
 - Optional speech: `TORRENT_WHISPER_MODEL` and `TORRENT_PIPER_MODEL`. Speech input needs `pip install faster-whisper sounddevice numpy`; speech output uses Piper, `pyttsx3`, or your system's built-in voice. Commands: `/tts`, `/listen`, `/voicechat`.
 
-Handy in-chat commands: `/crystals`, `/ponder`, `/sleep`, `/dream`, `/audit`, `/grid`, `/flip`, `/export`, `/emotions`, `/telemetry`, `/wheels` (switch between the plain and the detailed LLM prompt), `/nightmare` (see below), `/levels`, `/idle`, `/live`, `/speak`, `/rhythm`, `/face`, `/read`, `/whoami`, `/people`, `/facts`, `/note`, `/back` (undo your last message), `/prompt` (see what the LLM was sent). The bridge lists them all at start-up.
+Handy in-chat commands: `/crystals`, `/ponder`, `/sleep`, `/dream`, `/audit`, `/grid`, `/flip`, `/export`, `/emotions`, `/telemetry`, `/wheels` (switch between the plain and the detailed LLM prompt), `/nightmare` (see below), `/levels`, `/idle`, `/live`, `/speak`, `/rhythm`, `/face`, `/read`, `/whoami`, `/people` (with trust), `/connection`, `/dialogue`, `/facts`, `/note`, `/back` (undo your last message), `/prompt` (see what the LLM was sent). `/switches` shows what's on or off for the open brain and `/help` lists every command.
 
 More environment variables for the newer features: `TORRENT_HOSTS` (a comma list of LLM servers to try; the last one
 that worked is remembered in `torrent_hosts.json`), `TORRENT_FACE_PORT` / `TORRENT_FACE_HOST` / `TORRENT_FACE_PASSWORD`
@@ -134,6 +135,30 @@ These are **experimental and off unless you turn them on** (each is saved per br
 When you ask the LLM voice how the brain is, what it thought about while alone, whether it slept, or what time it is,
 the bridge gives it the brain's real record and tells it to say it doesn't know anything else.
 
+### Standard and research setups (v24.5.0)
+
+A brain runs in one of two setups, saved in its file:
+
+- **Standard:** every fix that has passed its tests is on (Z follows the push, the mood fix, the rebuilt S axis and its
+  fix, the Mood Ring and People Ring labels, walls at the S edge, the mood cell at the mood level, the link line as a
+  hint), and `/switches` and `/help` show only the everyday switches. New brains start here.
+- **Research:** every switch is shown. Brains made before v24.5.0 count as research, so nothing changes under them.
+
+`/preset standard` or `/preset research` switches; `/preset` shows which one a brain is on. Test switches still work in
+standard when typed. `TORRENT_PRESET=research` makes new brains start unchanged.
+
+### Trust and connection (v25.0, measured only)
+
+- **Trust:** each person gets a trust number from good and bad experiences: warm or cold messages (counting least),
+  keeping your word ("I'll be back", then coming back before the deadline) and answering when the brain speaks up. Old
+  experiences fade by half in two weeks. You start a little trusted (0.60), others neutral (0.50). `/people` and the
+  face page show it.
+- **Connection:** every word learns whether the brain meets it with someone or alone (-1 alone to +1 together),
+  starting at 0, from the brain's own life: messages count as together (scaled by trust), idle time as alone. The face
+  page shows a Together level; `/connection` shows the most together and most alone words.
+
+Both are only measured and shown. Nothing uses them yet to change learning, listening or where a brain lands.
+
 ### Nightmare mode
 
 By default the engine leans up: frightening or negative words are kept out of the brain's name, its dream bridges, its recall and its spreading activation, and sleep softens links between strongly positive and strongly negative words. This is deliberate, so a brain can't spiral into fear. **Nightmare mode** turns those rules off, so a brain learns and dreams about frightening things the same way it learns anything else. It is off by default. Type `/nightmare` to turn it on or off; the choice is saved in that brain's file, and the status line shows `🌑 nightmare` while it is on. For test runs, `TORRENT_NIGHTMARE=1` (or `0`) sets it at start-up. In a short test, a brain given frightening lines and then calm ones went back to a positive name in normal mode, but kept a negative one ("Betrayed") in nightmare mode.
@@ -153,7 +178,7 @@ reply of a session is slower because the model has to load). The 32 GB of RAM is
 
 ## Why this is public
 
-This project is published as a **defensive disclosure** so the ideas in it stay free for anyone to use and cannot later be patented by someone else. The description in `TORRENT_DISCLOSURE.md` (v21) and `TORRENT_DISCLOSURE_ADDENDUM_1.md` (v21.1 to v24.1.1) is written to be detailed enough to re-implement. Permanent archived copies are on Zenodo: [doi.org/10.5281/zenodo.24040746](https://doi.org/10.5281/zenodo.24040746) always points to the latest version, and the original first release (v21.0, the dated disclosure) is [doi.org/10.5281/zenodo.24040747](https://doi.org/10.5281/zenodo.24040747).
+This project is published as a **defensive disclosure** so the ideas in it stay free for anyone to use and cannot later be patented by someone else. The description in `TORRENT_DISCLOSURE.md` (v21) and `TORRENT_DISCLOSURE_ADDENDUM_1.md` (v21.1 to v24.1.1) and `TORRENT_DISCLOSURE_ADDENDUM_2.md` (v24.1.2 to v25.0.0) is written to be detailed enough to re-implement. Permanent archived copies are on Zenodo: [doi.org/10.5281/zenodo.24040746](https://doi.org/10.5281/zenodo.24040746) always points to the latest version, and the original first release (v21.0, the dated disclosure) is [doi.org/10.5281/zenodo.24040747](https://doi.org/10.5281/zenodo.24040747).
 
 ## Notes
 
